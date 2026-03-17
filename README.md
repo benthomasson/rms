@@ -84,6 +84,18 @@ rms log
 
 # Export as JSON
 rms export
+
+# Import from a beliefs CLI registry
+rms import-beliefs ~/git/physics-pi-meta/beliefs.md
+# Imported 39 claims (2 retracted)
+# Imported 8 nogoods
+
+# nogoods.md is auto-detected next to beliefs.md, or specify explicitly:
+rms import-beliefs ~/git/physics-pi-meta/beliefs.md --nogoods ~/git/physics-pi-meta/nogoods.md
+
+# After import, cascading works on the imported dependency graph:
+rms retract beliefs-improve-accuracy
+# Retracted: beliefs-improve-accuracy, engineering-intuition-unreliable, beliefs-beat-expert-prompting, ...
 ```
 
 ## Commands
@@ -102,6 +114,7 @@ rms export
 | `rms nogood A B ...` | Record contradiction, retract least-entrenched |
 | `rms propagate` | Recompute all truth values |
 | `rms log` | Show propagation audit trail |
+| `rms import-beliefs FILE` | Import a beliefs.md registry (auto-detects nogoods.md) |
 | `rms export` | Export network as JSON |
 
 ## Tests
@@ -110,7 +123,7 @@ rms export
 uv run --extra test pytest tests/ -v
 ```
 
-39 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, explain traces, and SQLite round-trips.
+64 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, explain traces, SQLite round-trips, and beliefs.md import.
 
 ## References
 
