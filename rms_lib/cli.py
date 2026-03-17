@@ -7,6 +7,7 @@ from pathlib import Path
 
 from .network import Network
 from .storage import Storage
+from .import_beliefs import import_into_network
 
 
 DEFAULT_DB = "rms.db"
@@ -242,6 +243,44 @@ def cmd_log(args):
         print(f"  {entry['timestamp']}  {entry['action']:10s}  {entry['target']:20s}  {entry['value']}")
 
 
+def cmd_import_beliefs(args):
+    """Import a beliefs.md registry into the RMS network."""
+    beliefs_path = Path(args.beliefs_file)
+    if not beliefs_path.exists():
+        print(f"File not found: {beliefs_path}", file=sys.stderr)
+        sys.exit(1)
+
+    beliefs_text = beliefs_path.read_text()
+
+    nogoods_text = None
+    if args.nogoods_file:
+        nogoods_path = Path(args.nogoods_file)
+        if nogoods_path.exists():
+            nogoods_text = nogoods_path.read_text()
+        else:
+            print(f"Nogoods file not found: {nogoods_path}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        # Auto-detect nogoods.md next to beliefs.md
+        auto_nogoods = beliefs_path.parent / "nogoods.md"
+        if auto_nogoods.exists():
+            nogoods_text = auto_nogoods.read_text()
+
+    store = get_storage(args)
+    net = store.load()
+
+    result = import_into_network(net, beliefs_text, nogoods_text)
+
+    store.save(net)
+    store.close()
+
+    print(f"Imported {result['claims_imported']} claims ({result['claims_retracted']} retracted)")
+    if result['claims_skipped']:
+        print(f"Skipped {result['claims_skipped']} (already in network)")
+    if result['nogoods_imported']:
+        print(f"Imported {result['nogoods_imported']} nogoods")
+
+
 def cmd_export(args):
     """Export the network as JSON."""
     store = get_storage(args)
@@ -323,6 +362,11 @@ def main():
     p = sub.add_parser("log", help="Show propagation history")
     p.add_argument("--last", type=int, help="Show only last N entries")
 
+    # import-beliefs
+    p = sub.add_parser("import-beliefs", help="Import a beliefs.md registry")
+    p.add_argument("beliefs_file", help="Path to beliefs.md")
+    p.add_argument("--nogoods", dest="nogoods_file", help="Path to nogoods.md (auto-detected if next to beliefs.md)")
+
     # export
     sub.add_parser("export", help="Export network as JSON")
 
@@ -342,6 +386,7 @@ def main():
         "nogood": cmd_nogood,
         "propagate": cmd_propagate,
         "log": cmd_log,
+        "import-beliefs": cmd_import_beliefs,
         "export": cmd_export,
     }
     commands[args.command](args)
