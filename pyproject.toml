@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "rms"
+version = "0.1.0"
+description = "Reason Maintenance System — automatic belief retraction and dependency-directed backtracking"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+rms = "rms_lib.cli:main"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
