@@ -142,6 +142,48 @@ class Network:
         _walk(node_id)
         return premises
 
+    def _entrenchment(self, node_id: str) -> int:
+        """Compute entrenchment score for a node.
+
+        Higher score = more entrenched = harder to retract.
+        Premises (evidence) are more entrenched than derived nodes (speculation).
+        Nodes with more dependents are more entrenched (more things break).
+        Source-backed nodes are more entrenched than unsourced.
+
+        The score is used by find_culprits to prefer retracting less-entrenched
+        nodes (speculative assumptions) over more-entrenched ones (evidence).
+        """
+        if node_id not in self.nodes:
+            return 0
+        node = self.nodes[node_id]
+        score = 0
+
+        # Premises (no justifications) are evidence — protect them
+        if not node.justifications:
+            score += 100
+
+        # Source-backed nodes are more trustworthy
+        if node.source:
+            score += 50
+        if node.source_hash:
+            score += 25
+
+        # More dependents = more entrenched (more things break if retracted)
+        score += len(node.dependents) * 10
+
+        # Metadata-based type scoring
+        btype = node.metadata.get("beliefs_type", "").upper()
+        type_scores = {
+            "AXIOM": 90, "WARNING": 90,
+            "OBSERVATION": 80,
+            "DERIVED": 40,
+            "PREDICTED": 30,
+            "NOTE": 10,
+        }
+        score += type_scores.get(btype, 20)
+
+        return score
+
     def find_culprits(self, nogood_node_ids: list[str]) -> list[dict]:
         """Find premises that could be retracted to resolve a contradiction.
 
@@ -149,9 +191,12 @@ class Network:
         which premises, if retracted, would cause at least one nogood node
         to go OUT (resolving the contradiction).
 
-        Returns a list of candidate dicts sorted by impact (fewest
-        dependents first — minimal disruption):
-            [{"premise": str, "would_resolve": list[str], "dependent_count": int}]
+        Sorted by entrenchment (least entrenched first). This ensures
+        evidence/observations are protected and speculative assumptions
+        are retracted first.
+
+        Returns:
+            [{"premise": str, "would_resolve": list[str], "dependent_count": int, "entrenchment": int}]
         """
         # Collect assumptions for each nogood node
         assumptions_by_node: dict[str, list[str]] = {}
@@ -174,14 +219,16 @@ class Network:
                 if premise_id in assumptions:
                     would_resolve.append(nid)
             if would_resolve:
+                entrenchment = self._entrenchment(premise_id)
                 candidates.append({
                     "premise": premise_id,
                     "would_resolve": would_resolve,
                     "dependent_count": len(self.nodes[premise_id].dependents),
+                    "entrenchment": entrenchment,
                 })
 
-        # Sort: fewest dependents first (minimal disruption)
-        candidates.sort(key=lambda c: c["dependent_count"])
+        # Sort: least entrenched first (retract speculative assumptions first)
+        candidates.sort(key=lambda c: c["entrenchment"])
         return candidates
 
     def add_nogood(self, node_ids: list[str]) -> list[str]:

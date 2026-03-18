@@ -214,6 +214,67 @@ class TestBacktrackingInNogood:
         assert len(backtrack_entries) == 0
 
 
+class TestEntrenchment:
+    """Entrenchment scoring prefers retracting speculation over evidence."""
+
+    def test_evidence_premise_more_entrenched_than_derived(self):
+        """Evidence (premise) should be protected over speculation (derived)."""
+        net = Network()
+        net.add_node("evidence", "Finite trees have gap closing ~1/N",
+                      source="physics-quantum-lattice:results.md")
+        net.add_node("basis", "W is a Bethe lattice")
+        net.add_node("speculation", "Tree is the genealogy",
+                      justifications=[Justification(type="SL", antecedents=["basis"])])
+
+        # Evidence is more entrenched (premise + has source)
+        assert net._entrenchment("evidence") > net._entrenchment("basis")
+
+    def test_nogood_retracts_speculation_not_evidence(self):
+        """The physics-speculation bug: evidence should survive, speculation should die."""
+        net = Network()
+        # Evidence: a premise with source (simulation result)
+        net.add_node("finite-tree-gap-closes",
+                      "Finite trees have spectral gap closing ~1/N",
+                      source="physics-quantum-lattice:entries/2026/02/22/combined-laplacian-results.md")
+        # Speculation: derived from another premise
+        net.add_node("w-is-bethe-lattice", "W dimension is a Bethe lattice")
+        net.add_node("tree-as-genealogy",
+                      "Picture A: the tree is the duplication genealogy",
+                      justifications=[Justification(type="SL", antecedents=["w-is-bethe-lattice"])])
+
+        # These two contradict each other
+        changed = net.add_nogood(["tree-as-genealogy", "finite-tree-gap-closes"])
+
+        # Evidence should survive — speculation's premise should be retracted
+        assert net.nodes["finite-tree-gap-closes"].truth_value == "IN"
+        # The speculation or its premise should be OUT
+        assert (net.nodes["tree-as-genealogy"].truth_value == "OUT" or
+                net.nodes["w-is-bethe-lattice"].truth_value == "OUT")
+
+    def test_sourced_premise_over_unsourced(self):
+        """Premise with source is more entrenched than premise without."""
+        net = Network()
+        net.add_node("sourced", "Has a source", source="repo/file.md")
+        net.add_node("unsourced", "No source")
+        assert net._entrenchment("sourced") > net._entrenchment("unsourced")
+
+    def test_beliefs_type_affects_entrenchment(self):
+        """OBSERVATION > DERIVED in entrenchment."""
+        net = Network()
+        net.add_node("obs", "An observation", metadata={"beliefs_type": "OBSERVATION"})
+        net.add_node("der", "A derivation", metadata={"beliefs_type": "DERIVED"})
+        assert net._entrenchment("obs") > net._entrenchment("der")
+
+    def test_more_dependents_more_entrenched(self):
+        """Nodes with more dependents are more entrenched."""
+        net = Network()
+        net.add_node("popular", "Many depend on this")
+        net.add_node("lonely", "Nothing depends on this")
+        net.add_node("d1", "Dep 1", justifications=[Justification(type="SL", antecedents=["popular"])])
+        net.add_node("d2", "Dep 2", justifications=[Justification(type="SL", antecedents=["popular"])])
+        assert net._entrenchment("popular") > net._entrenchment("lonely")
+
+
 class TestBacktrackingAPI:
     """API layer for trace and backtracking."""
 
