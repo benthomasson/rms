@@ -10,7 +10,9 @@ A **justification** is a reason for believing a node. Type SL (Support List) mea
 
 When a node goes OUT, all dependents whose justifications become invalid go OUT too — this is the **retraction cascade**. When a retracted node comes back IN, dependents are automatically recomputed — **restoration without rederivation**.
 
-A **nogood** records a contradiction: a set of nodes that cannot all be IN simultaneously. When a nogood is detected, the least-entrenched node is retracted.
+A **nogood** records a contradiction: a set of nodes that cannot all be IN simultaneously. When a nogood is detected, the system uses **dependency-directed backtracking** to trace backward through the justification graph and retract the responsible *premise* with minimal disruption — not an arbitrary node.
+
+Justifications support **non-monotonic reasoning** via the **outlist**: "believe X unless Y is believed." A justification is valid when all inlist nodes are IN *and* all outlist nodes are OUT. This enables default reasoning and **dialectical argumentation** — beliefs can be formally challenged and defended.
 
 ## Install
 
@@ -119,6 +121,34 @@ rms check-stale
 
 # Token-budgeted summary for context injection
 rms compact --budget 500
+
+# Non-monotonic reasoning: believe X unless Y
+rms add default-approx "Newtonian approximation holds" --unless strong-field
+rms assert strong-field  # default-approx goes OUT automatically
+rms retract strong-field  # default-approx restored
+
+# Backfill source hashes
+rms hash-sources
+# 26 backfilled
+
+# Trace assumptions — what premises does a conclusion rest on?
+rms trace no-single-best-configuration
+# no-single-best-configuration rests on 1 premise(s):
+#   [+] beliefs-improve-accuracy  (7 dependents)
+
+# Challenge a belief — target goes OUT
+rms challenge velocity-constraint "Not derived — postulated"
+# Challenged velocity-constraint with challenge-velocity-constraint
+# Changed: velocity-constraint, acoustic-metric-schwarzschild, ...
+
+# Defend against a challenge — target restored
+rms defend velocity-constraint challenge-velocity-constraint \
+  "Follows from variational principle on elastic medium"
+# Defended velocity-constraint with defense-challenge-velocity-constraint
+# Changed: challenge-velocity-constraint, velocity-constraint, ...
+
+# List challenged nodes
+rms list --challenged
 ```
 
 ## Commands
@@ -128,17 +158,22 @@ rms compact --budget 500
 | `rms init` | Create rms.db |
 | `rms add ID "text"` | Add a premise |
 | `rms add ID "text" --sl a,b` | Add with SL justification (all antecedents must be IN) |
+| `rms add ID "text" --sl a --unless y` | Add with outlist (must be OUT for justification to hold) |
 | `rms add ID "text" --cp a,b` | Add with CP justification (assumptions must be consistent) |
 | `rms retract ID` | Mark OUT + cascade to dependents |
 | `rms assert ID` | Mark IN + cascade restoration |
 | `rms status` | Show all nodes with truth values |
 | `rms show ID` | Show node details, justifications, dependents |
 | `rms explain ID` | Trace why a node is IN or OUT |
-| `rms nogood A B ...` | Record contradiction, retract least-entrenched |
+| `rms challenge ID "reason"` | Challenge a node — target goes OUT |
+| `rms defend TARGET CHALLENGE "reason"` | Defend against a challenge — target restored |
+| `rms nogood A B ...` | Record contradiction, backtrack to responsible premise |
+| `rms trace ID` | Trace backward to find all premises a node rests on |
+| `rms hash-sources` | Backfill source hashes for unhashed nodes (`--force` to re-hash all) |
 | `rms propagate` | Recompute all truth values |
 | `rms log` | Show propagation audit trail |
 | `rms search QUERY` | Search nodes by text or ID (case-insensitive) |
-| `rms list` | List nodes with filters (`--status IN\|OUT`, `--premises`, `--has-dependents`) |
+| `rms list` | List with filters (`--status`, `--premises`, `--has-dependents`, `--challenged`) |
 | `rms import-beliefs FILE` | Import a beliefs.md registry (auto-detects nogoods.md) |
 | `rms export` | Export network as JSON |
 | `rms export-markdown` | Export as beliefs.md-compatible markdown (`-o FILE` to write) |
@@ -151,7 +186,7 @@ rms compact --budget 500
 uv run --extra test pytest tests/ -v
 ```
 
-120 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, explain traces, SQLite round-trips, beliefs.md import, export-markdown, check-stale, compact, search, and list.
+182 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, dependency-directed backtracking, non-monotonic justifications (outlist), dialectical argumentation (challenge/defend), explain traces, SQLite round-trips, beliefs.md import, export-markdown, check-stale, hash-sources, compact, search, and list.
 
 ## References
 

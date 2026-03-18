@@ -1,7 +1,7 @@
 ---
 name: rms
 description: Reason Maintenance System — track justified beliefs with automatic retraction cascades and restoration
-argument-hint: "[init|add|retract|assert|status|show|explain|nogood|propagate|import-beliefs|search|list|export|export-markdown|check-stale|compact|log] [args...]"
+argument-hint: "[init|add|retract|assert|challenge|defend|nogood|trace|status|show|explain|search|list|hash-sources|check-stale|compact|propagate|import-beliefs|export|export-markdown|log] [args...]"
 allowed-tools: Bash(rms *), Bash(cd * && uv run rms *), Bash(uvx *rms*), Read, Grep, Glob
 ---
 
@@ -34,7 +34,9 @@ Try these in order until one works:
 - **Multiple justifications**: A node can have multiple justifications. It stays IN if ANY of them is valid. Only goes OUT when ALL fail.
 - **Retraction cascade**: When a node goes OUT, all dependents whose justifications become invalid also go OUT — automatically, transitively.
 - **Restoration**: When a retracted node comes back IN, dependents are recomputed — no manual rederivation needed.
-- **Nogood**: A set of nodes that cannot all be IN simultaneously. When detected, the least-entrenched node is retracted.
+- **Outlist** (non-monotonic): A justification can require nodes to be OUT (not just IN). "Believe X unless Y" — if Y goes IN, the justification fails. This enables default reasoning and defeasible inference.
+- **Nogood**: A set of nodes that cannot all be IN simultaneously. When detected, dependency-directed backtracking traces to the responsible premise and retracts it.
+- **Challenge/Defend**: Dialectical argumentation. Challenging a node makes it go OUT. Defending it neutralises the challenge. Multi-level chains are supported.
 
 ## Subcommand Behavior
 
@@ -50,6 +52,10 @@ rms add node-id "Description of the belief"
 
 # Justified by other nodes (SL = all antecedents must be IN)
 rms add node-id "Description" --sl antecedent-a,antecedent-b
+
+# Non-monotonic: believe X unless Y (outlist)
+rms add node-id "Default holds" --unless counter-evidence
+rms add node-id "X if A and not Y" --sl dep-a --unless dep-y
 
 # With provenance
 rms add node-id "Description" --sl dep-a --source "repo:path/to/file.md" --label "why this justification holds"
@@ -81,8 +87,22 @@ Run `rms show node-id`. Shows full details: text, status, source, justifications
 ### `explain`
 Run `rms explain node-id`. Traces why a node is IN or OUT through the justification chain back to premises. This is the debugging command — use it when you need to understand why something is believed or not believed.
 
+### `challenge`
+Run `rms challenge TARGET "reason"`. Creates a challenge node (IN by default) and adds it to the target's outlist. Target goes OUT immediately, cascading to dependents. Use `--id` for a custom challenge node ID.
+
+Use when a reviewer or new evidence disputes a belief but you want to preserve the original argument (unlike `retract` which just marks it OUT).
+
+### `defend`
+Run `rms defend TARGET CHALLENGE-ID "reason"`. Creates a defense node that neutralises the challenge. The challenge goes OUT, the target is restored. Multi-level chains work: challenge the defense, defend the defense, etc.
+
 ### `nogood`
-Run `rms nogood node-a node-b [node-c ...]`. Records a contradiction and retracts the least-entrenched node. Use when you discover that two or more beliefs cannot both be true.
+Run `rms nogood node-a node-b [node-c ...]`. Records a contradiction. Uses dependency-directed backtracking to trace backward through justification chains and retract the responsible *premise* with fewest dependents (minimal disruption), not an arbitrary node.
+
+### `trace`
+Run `rms trace node-id`. Traces backward through justification chains to find all premises (nodes with no justifications) that a conclusion rests on. Answers "what assumptions is this built on?"
+
+### `hash-sources`
+Run `rms hash-sources`. Backfills SHA-256 source hashes for nodes that have a source path but no stored hash. Use `--force` to re-hash all nodes (after confirming source changes are expected).
 
 ### `import-beliefs`
 Import a `beliefs.md` registry into the RMS network:
@@ -198,14 +218,40 @@ rms search "calibration"
 rms list --premises              # what are the foundations?
 rms list --has-dependents        # what's load-bearing?
 rms list --status OUT            # what was retracted?
+rms list --challenged            # what has active challenges?
+```
+
+### Dialectical argumentation (peer review)
+```bash
+# Reviewer challenges a belief
+rms challenge velocity-constraint "Not derived — postulated without proof"
+# velocity-constraint goes OUT, all dependents cascade
+
+# Author defends
+rms defend velocity-constraint challenge-velocity-constraint \
+  "Follows from variational principle on elastic medium"
+# challenge goes OUT, velocity-constraint restored
+
+# Reviewer challenges the defense
+rms challenge defense-challenge-velocity-constraint "Variational argument is circular"
+# defense goes OUT, challenge restored, velocity-constraint OUT again
+```
+
+### Tracing assumptions
+```bash
+rms trace conclusion-node        # what premises does this rest on?
+rms explain conclusion-node      # why is this IN or OUT? (forward trace)
 ```
 
 ## After Any Command
 
 - After `retract`: report what cascaded and suggest running `status` to see the new belief set
+- After `challenge`: report what went OUT and the blast radius
+- After `defend`: report what was restored
 - After `import-beliefs`: report counts and suggest `status` to review
-- After `nogood`: report what was retracted and why
+- After `nogood`: report what premise was backtracked to and what cascaded
 - After `explain`: summarize the justification chain in plain language
+- After `trace`: summarize which premises the conclusion rests on
 - Keep responses concise — the tool output speaks for itself
 
 ## Storage
