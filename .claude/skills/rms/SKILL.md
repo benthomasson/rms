@@ -1,7 +1,7 @@
 ---
 name: rms
 description: Reason Maintenance System — track justified beliefs with automatic retraction cascades and restoration
-argument-hint: "[init|add|retract|assert|challenge|defend|nogood|trace|status|show|explain|search|list|hash-sources|check-stale|compact|propagate|import-beliefs|export|export-markdown|log] [args...]"
+argument-hint: "[init|add|retract|assert|challenge|defend|convert-to-premise|summarize|nogood|trace|status|show|explain|search|list|hash-sources|check-stale|compact|propagate|import-beliefs|import-json|export|export-markdown|log] [args...]"
 allowed-tools: Bash(rms *), Bash(cd * && uv run rms *), Bash(uvx *rms*), Read, Grep, Glob
 ---
 
@@ -101,6 +101,13 @@ Run `rms nogood node-a node-b [node-c ...]`. Records a contradiction. Uses depen
 ### `trace`
 Run `rms trace node-id`. Traces backward through justification chains to find all premises (nodes with no justifications) that a conclusion rests on. Answers "what assumptions is this built on?"
 
+### `convert-to-premise`
+Run `rms convert-to-premise node-id`. Strips all justifications from a node, making it a premise (IN by default). Cascades restoration to dependents.
+
+**Use after `import-beliefs`** when a `Depends on:` relationship in beliefs.md was contextual ("derived while investigating X") rather than logical ("true only if X is true"). The import treats all dependencies as SL justifications, which means nodes can be incorrectly OUT if their context-dependency was retracted. Converting to premise fixes this.
+
+**Important:** `rms assert` alone is NOT sufficient for this — it marks the node IN but doesn't remove the SL justification. The node will revert to OUT on the next recomputation. `convert-to-premise` removes the justification entirely.
+
 ### `hash-sources`
 Run `rms hash-sources`. Backfills SHA-256 source hashes for nodes that have a source path but no stored hash. Use `--force` to re-hash all nodes (after confirming source changes are expected).
 
@@ -118,6 +125,8 @@ This converts a beliefs CLI registry into RMS nodes:
 - `nogoods.md` auto-detected next to `beliefs.md`, or specify with `--nogoods path/to/nogoods.md`
 
 **Use this to migrate research registries from `beliefs` to `rms`.** After import, retraction cascades work on the imported dependency graph.
+
+**Caveat:** `import-beliefs` treats all `Depends on:` as SL justifications (all antecedents must be IN). If a dependency was contextual ("derived while investigating X") rather than logical ("true only if X is true"), the node may be incorrectly OUT. Use `rms convert-to-premise` to fix these after import.
 
 ### `propagate`
 Run `rms propagate`. Recomputes all truth values from justifications. Use after manual database edits or to verify consistency.
