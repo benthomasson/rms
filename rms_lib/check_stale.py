@@ -73,3 +73,41 @@ def check_stale(
             })
 
     return results
+
+
+def hash_sources(
+    network: Network,
+    repos: dict[str, Path] | None = None,
+    force: bool = False,
+) -> list[dict]:
+    """Backfill source hashes for nodes that have a source path but no stored hash.
+
+    If force=True, re-hashes all nodes with sources (even those that already
+    have a hash). Use after confirming a source change is expected.
+
+    Returns a list of dicts for each node that was hashed:
+        {"node_id": str, "source": str, "hash": str, "was_empty": bool}
+    """
+    results = []
+
+    for nid, node in sorted(network.nodes.items()):
+        if not node.source:
+            continue
+        if node.source_hash and not force:
+            continue
+
+        path = resolve_source_path(node.source, repos)
+        if path is None:
+            continue
+
+        new_hash = hash_file(path)
+        was_empty = not node.source_hash
+        node.source_hash = new_hash
+        results.append({
+            "node_id": nid,
+            "source": node.source,
+            "hash": new_hash,
+            "was_empty": was_empty,
+        })
+
+    return results

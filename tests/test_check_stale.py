@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from rms_lib.network import Network
-from rms_lib.check_stale import check_stale, hash_file, resolve_source_path
+from rms_lib.check_stale import check_stale, hash_file, hash_sources, resolve_source_path
 
 
 class TestHashFile:
@@ -119,3 +119,72 @@ class TestCheckStale:
 
         results = check_stale(net, repos={"r": tmp_path})
         assert len(results) == 2
+
+
+class TestHashSources:
+
+    def test_backfills_empty_hash(self, tmp_path):
+        f = tmp_path / "source.md"
+        f.write_text("content")
+
+        net = Network()
+        net.add_node("a", "Node A", source="r/source.md")
+        assert net.nodes["a"].source_hash == ""
+
+        results = hash_sources(net, repos={"r": tmp_path})
+        assert len(results) == 1
+        assert results[0]["node_id"] == "a"
+        assert results[0]["was_empty"] is True
+        assert net.nodes["a"].source_hash != ""
+
+    def test_skips_existing_hash(self, tmp_path):
+        f = tmp_path / "source.md"
+        f.write_text("content")
+
+        net = Network()
+        net.add_node("a", "Node A", source="r/source.md", source_hash="existing")
+
+        results = hash_sources(net, repos={"r": tmp_path})
+        assert len(results) == 0
+        assert net.nodes["a"].source_hash == "existing"
+
+    def test_force_rehashes(self, tmp_path):
+        f = tmp_path / "source.md"
+        f.write_text("content")
+
+        net = Network()
+        net.add_node("a", "Node A", source="r/source.md", source_hash="old")
+
+        results = hash_sources(net, repos={"r": tmp_path}, force=True)
+        assert len(results) == 1
+        assert results[0]["was_empty"] is False
+        assert net.nodes["a"].source_hash != "old"
+
+    def test_skips_missing_source_files(self, tmp_path):
+        net = Network()
+        net.add_node("a", "Node A", source="r/missing.md")
+
+        results = hash_sources(net, repos={"r": tmp_path})
+        assert len(results) == 0
+
+    def test_skips_nodes_without_source(self):
+        net = Network()
+        net.add_node("a", "Node A")
+
+        results = hash_sources(net)
+        assert len(results) == 0
+
+    def test_multiple_nodes(self, tmp_path):
+        (tmp_path / "a.md").write_text("aaa")
+        (tmp_path / "b.md").write_text("bbb")
+
+        net = Network()
+        net.add_node("a", "Node A", source="r/a.md")
+        net.add_node("b", "Node B", source="r/b.md")
+        net.add_node("c", "Node C", source="r/c.md")  # missing file
+
+        results = hash_sources(net, repos={"r": tmp_path})
+        assert len(results) == 2
+        hashed_ids = [r["node_id"] for r in results]
+        assert "a" in hashed_ids
+        assert "b" in hashed_ids

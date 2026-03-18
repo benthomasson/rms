@@ -332,6 +332,27 @@ def check_stale(
         }
 
 
+def hash_sources(
+    force: bool = False,
+    repos: dict[str, str] | None = None,
+    db_path: str = DEFAULT_DB,
+) -> dict:
+    """Backfill source hashes for nodes with source paths but no stored hash.
+
+    Returns: {"hashed": list[dict], "count": int}
+    """
+    from .check_stale import hash_sources as _hash
+
+    repo_paths = None
+    if repos:
+        from pathlib import Path as P
+        repo_paths = {k: P(v) for k, v in repos.items()}
+
+    with _with_network(db_path, write=True) as net:
+        results = _hash(net, repo_paths, force=force)
+        return {"hashed": results, "count": len(results)}
+
+
 def compact(budget: int = 500, truncate: bool = True, db_path: str = DEFAULT_DB) -> str:
     """Generate a token-budgeted belief state summary.
 

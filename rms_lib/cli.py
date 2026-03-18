@@ -235,6 +235,29 @@ def cmd_export_markdown(args):
         print(md)
 
 
+def cmd_hash_sources(args):
+    result = api.hash_sources(force=args.force, db_path=args.db)
+
+    if not result["hashed"]:
+        print("No nodes to hash (all sources already have hashes, or source files not found).")
+        if not args.force:
+            print("Use --force to re-hash nodes that already have hashes.")
+        return
+
+    for item in result["hashed"]:
+        action = "backfilled" if item["was_empty"] else "re-hashed"
+        print(f"  {action}  {item['node_id']}  {item['hash']}  ({item['source']})")
+
+    backfilled = sum(1 for h in result["hashed"] if h["was_empty"])
+    rehashed = result["count"] - backfilled
+    parts = []
+    if backfilled:
+        parts.append(f"{backfilled} backfilled")
+    if rehashed:
+        parts.append(f"{rehashed} re-hashed")
+    print(f"\n{', '.join(parts)}")
+
+
 def cmd_check_stale(args):
     result = api.check_stale(db_path=args.db)
 
@@ -366,6 +389,10 @@ def main():
     p = sub.add_parser("export-markdown", help="Export network as beliefs.md-compatible markdown")
     p.add_argument("-o", "--output", help="Write to file instead of stdout")
 
+    # hash-sources
+    p = sub.add_parser("hash-sources", help="Backfill source hashes for nodes without them")
+    p.add_argument("--force", action="store_true", help="Re-hash all nodes, even those with existing hashes")
+
     # check-stale
     sub.add_parser("check-stale", help="Check IN nodes for source file staleness")
 
@@ -403,6 +430,7 @@ def main():
         "import-beliefs": cmd_import_beliefs,
         "export": cmd_export,
         "export-markdown": cmd_export_markdown,
+        "hash-sources": cmd_hash_sources,
         "check-stale": cmd_check_stale,
         "compact": cmd_compact,
         "trace": cmd_trace,
