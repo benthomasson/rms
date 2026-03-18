@@ -227,6 +227,127 @@ class Network:
 
         return self.retract(victim_id)
 
+    def challenge(self, target_id: str, reason: str, challenge_id: str | None = None) -> dict:
+        """Challenge a node — create a challenge node and add it to the target's outlist.
+
+        The challenge node is a premise (IN by default), so the target
+        immediately goes OUT (unless it has another justification that
+        doesn't include this challenge in its outlist).
+
+        If the target is a premise (no justifications), it is converted
+        to a justified node with an SL justification that has the
+        challenge in its outlist.
+
+        Returns: {"challenge_id": str, "target_id": str, "changed": list[str]}
+        """
+        if target_id not in self.nodes:
+            raise KeyError(f"Node '{target_id}' not found")
+
+        target = self.nodes[target_id]
+
+        # Generate challenge ID
+        if challenge_id is None:
+            challenge_id = f"challenge-{target_id}"
+            # Handle multiple challenges to the same target
+            suffix = 1
+            while challenge_id in self.nodes:
+                suffix += 1
+                challenge_id = f"challenge-{target_id}-{suffix}"
+
+        if challenge_id in self.nodes:
+            raise ValueError(f"Challenge node '{challenge_id}' already exists")
+
+        # Create the challenge node (premise — IN by default)
+        challenge_node = Node(
+            id=challenge_id,
+            text=reason,
+            metadata={"challenge_target": target_id},
+        )
+        self.nodes[challenge_id] = challenge_node
+        self._log("add", challenge_id, "IN")
+
+        # Add challenge to target's outlist
+        if target.justifications:
+            # Add challenge to outlist of all existing justifications
+            for j in target.justifications:
+                j.outlist.append(challenge_id)
+        else:
+            # Target is a premise — convert to justified node
+            # It was IN because it was a premise; now it's IN because
+            # of an SL justification with the challenge in the outlist
+            target.justifications.append(
+                Justification(type="SL", antecedents=[], outlist=[challenge_id])
+            )
+
+        # Register challenge node as affecting target
+        challenge_node.dependents.add(target_id)
+
+        # Track challenge on target metadata
+        challenges = target.metadata.get("challenges", [])
+        challenges.append(challenge_id)
+        target.metadata["challenges"] = challenges
+
+        # Recompute target truth value and propagate
+        old_value = target.truth_value
+        new_value = self._compute_truth(target)
+        changed = []
+
+        if old_value != new_value:
+            target.truth_value = new_value
+            changed.append(target_id)
+            self._log("challenge", target_id, new_value)
+            changed.extend(self._propagate(target_id))
+        else:
+            self._log("challenge", target_id, f"unchanged ({old_value})")
+
+        return {"challenge_id": challenge_id, "target_id": target_id, "changed": changed}
+
+    def defend(
+        self,
+        target_id: str,
+        challenge_id: str,
+        reason: str,
+        defense_id: str | None = None,
+    ) -> dict:
+        """Defend a node against a challenge — create a defense that neutralises the challenge.
+
+        The defense node has the challenge in its outlist: "the defense
+        holds unless the challenge is sustained." Since the defense is
+        a premise (IN by default), the challenge gets the defense in
+        its outlist, which makes the challenge go OUT, which restores
+        the target.
+
+        Returns: {"defense_id": str, "challenge_id": str, "target_id": str, "changed": list[str]}
+        """
+        if target_id not in self.nodes:
+            raise KeyError(f"Node '{target_id}' not found")
+        if challenge_id not in self.nodes:
+            raise KeyError(f"Challenge '{challenge_id}' not found")
+
+        if defense_id is None:
+            defense_id = f"defense-{challenge_id}"
+            suffix = 1
+            while defense_id in self.nodes:
+                suffix += 1
+                defense_id = f"defense-{challenge_id}-{suffix}"
+
+        if defense_id in self.nodes:
+            raise ValueError(f"Defense node '{defense_id}' already exists")
+
+        # The defense challenges the challenge — same mechanism
+        result = self.challenge(challenge_id, reason, challenge_id=defense_id)
+
+        # Update metadata
+        self.nodes[defense_id].metadata["defense_target"] = challenge_id
+        self.nodes[defense_id].metadata["defends"] = target_id
+
+        return {
+            "defense_id": defense_id,
+            "challenge_id": challenge_id,
+            "target_id": target_id,
+            "changed": result["changed"],
+        }
+
     def explain(self, node_id: str) -> list[dict]:
         """Trace why a node is IN or OUT.
 

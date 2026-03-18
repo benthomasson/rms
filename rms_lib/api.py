@@ -190,6 +190,35 @@ def find_culprits(node_ids: list[str], db_path: str = DEFAULT_DB) -> dict:
         return {"culprits": culprits}
 
 
+def challenge(
+    target_id: str,
+    reason: str,
+    challenge_id: str | None = None,
+    db_path: str = DEFAULT_DB,
+) -> dict:
+    """Challenge a node — creates a challenge node and the target goes OUT.
+
+    Returns: {"challenge_id": str, "target_id": str, "changed": list[str]}
+    """
+    with _with_network(db_path, write=True) as net:
+        return net.challenge(target_id, reason, challenge_id=challenge_id)
+
+
+def defend(
+    target_id: str,
+    challenge_id: str,
+    reason: str,
+    defense_id: str | None = None,
+    db_path: str = DEFAULT_DB,
+) -> dict:
+    """Defend a node against a challenge — neutralises the challenge, target restored.
+
+    Returns: {"defense_id": str, "challenge_id": str, "target_id": str, "changed": list[str]}
+    """
+    with _with_network(db_path, write=True) as net:
+        return net.defend(target_id, challenge_id, reason, defense_id=defense_id)
+
+
 def add_nogood(node_ids: list[str], db_path: str = DEFAULT_DB) -> dict:
     """Record a contradiction and use backtracking to resolve.
 
@@ -388,6 +417,7 @@ def list_nodes(
     status: str | None = None,
     premises_only: bool = False,
     has_dependents: bool = False,
+    challenged: bool = False,
     db_path: str = DEFAULT_DB,
 ) -> dict:
     """List nodes with optional filters.
@@ -403,11 +433,14 @@ def list_nodes(
                 continue
             if has_dependents and not node.dependents:
                 continue
+            if challenged and not node.metadata.get("challenges"):
+                continue
             nodes.append({
                 "id": nid,
                 "text": node.text,
                 "truth_value": node.truth_value,
                 "justification_count": len(node.justifications),
                 "dependent_count": len(node.dependents),
+                "challenges": node.metadata.get("challenges", []),
             })
         return {"nodes": nodes, "count": len(nodes)}

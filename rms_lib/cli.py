@@ -135,6 +135,38 @@ def cmd_explain(args):
         print(line)
 
 
+def cmd_challenge(args):
+    try:
+        result = api.challenge(
+            args.target_id, args.reason,
+            challenge_id=args.id,
+            db_path=args.db,
+        )
+    except (KeyError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Challenged {result['target_id']} with {result['challenge_id']}")
+    if result["changed"]:
+        print(f"Changed: {', '.join(result['changed'])}")
+
+
+def cmd_defend(args):
+    try:
+        result = api.defend(
+            args.target_id, args.challenge_id, args.reason,
+            defense_id=args.id,
+            db_path=args.db,
+        )
+    except (KeyError, ValueError) as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Defended {result['target_id']} against {result['challenge_id']} with {result['defense_id']}")
+    if result["changed"]:
+        print(f"Changed: {', '.join(result['changed'])}")
+
+
 def cmd_nogood(args):
     try:
         result = api.add_nogood(args.node_ids, db_path=args.db)
@@ -305,6 +337,7 @@ def cmd_list(args):
         status=args.status,
         premises_only=args.premises,
         has_dependents=args.has_dependents,
+        challenged=args.challenged,
         db_path=args.db,
     )
 
@@ -362,6 +395,19 @@ def main():
     p = sub.add_parser("explain", help="Explain why a node is IN or OUT")
     p.add_argument("node_id", help="Node to explain")
 
+    # challenge
+    p = sub.add_parser("challenge", help="Challenge a node — target goes OUT")
+    p.add_argument("target_id", help="Node to challenge")
+    p.add_argument("reason", help="Why the node is being challenged")
+    p.add_argument("--id", help="Custom challenge node ID (default: challenge-TARGET)")
+
+    # defend
+    p = sub.add_parser("defend", help="Defend a node against a challenge")
+    p.add_argument("target_id", help="Node being defended")
+    p.add_argument("challenge_id", help="Challenge to defend against")
+    p.add_argument("reason", help="Defense argument")
+    p.add_argument("--id", help="Custom defense node ID")
+
     # nogood
     p = sub.add_parser("nogood", help="Record a contradiction")
     p.add_argument("node_ids", nargs="+", help="Node IDs that cannot all be IN")
@@ -410,6 +456,7 @@ def main():
     p.add_argument("--status", choices=["IN", "OUT"], help="Filter by truth value")
     p.add_argument("--premises", action="store_true", help="Only show premises (no justifications)")
     p.add_argument("--has-dependents", action="store_true", help="Only show nodes that others depend on")
+    p.add_argument("--challenged", action="store_true", help="Only show nodes with active challenges")
 
     args = parser.parse_args()
     if not args.command:
@@ -433,6 +480,8 @@ def main():
         "hash-sources": cmd_hash_sources,
         "check-stale": cmd_check_stale,
         "compact": cmd_compact,
+        "challenge": cmd_challenge,
+        "defend": cmd_defend,
         "trace": cmd_trace,
         "search": cmd_search,
         "list": cmd_list,
