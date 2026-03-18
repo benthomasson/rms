@@ -112,8 +112,84 @@ class Network:
         changed.extend(self._propagate(node_id))
         return changed
 
+    def trace_assumptions(self, node_id: str) -> list[str]:
+        """Trace backward through justification chains to find all premises.
+
+        Returns the set of premise IDs (nodes with no justifications) that
+        support this node. These are the assumptions the conclusion rests on.
+        """
+        if node_id not in self.nodes:
+            raise KeyError(f"Node '{node_id}' not found")
+
+        premises = []
+        visited = set()
+
+        def _walk(nid: str) -> None:
+            if nid in visited or nid not in self.nodes:
+                return
+            visited.add(nid)
+            node = self.nodes[nid]
+            if not node.justifications:
+                # This is a premise
+                if nid not in premises:
+                    premises.append(nid)
+                return
+            # Walk through all justifications' antecedents
+            for j in node.justifications:
+                for ant_id in j.antecedents:
+                    _walk(ant_id)
+
+        _walk(node_id)
+        return premises
+
+    def find_culprits(self, nogood_node_ids: list[str]) -> list[dict]:
+        """Find premises that could be retracted to resolve a contradiction.
+
+        For each nogood node, traces back to its premises. Then identifies
+        which premises, if retracted, would cause at least one nogood node
+        to go OUT (resolving the contradiction).
+
+        Returns a list of candidate dicts sorted by impact (fewest
+        dependents first — minimal disruption):
+            [{"premise": str, "would_resolve": list[str], "dependent_count": int}]
+        """
+        # Collect assumptions for each nogood node
+        assumptions_by_node: dict[str, list[str]] = {}
+        all_premises: set[str] = set()
+        for nid in nogood_node_ids:
+            if nid not in self.nodes:
+                continue
+            node = self.nodes[nid]
+            if node.truth_value != "IN":
+                continue
+            assumptions = self.trace_assumptions(nid)
+            assumptions_by_node[nid] = assumptions
+            all_premises.update(assumptions)
+
+        # For each premise, check which nogood nodes depend on it
+        candidates = []
+        for premise_id in all_premises:
+            would_resolve = []
+            for nid, assumptions in assumptions_by_node.items():
+                if premise_id in assumptions:
+                    would_resolve.append(nid)
+            if would_resolve:
+                candidates.append({
+                    "premise": premise_id,
+                    "would_resolve": would_resolve,
+                    "dependent_count": len(self.nodes[premise_id].dependents),
+                })
+
+        # Sort: fewest dependents first (minimal disruption)
+        candidates.sort(key=lambda c: c["dependent_count"])
+        return candidates
+
     def add_nogood(self, node_ids: list[str]) -> list[str]:
-        """Record a contradiction and retract the least entrenched node.
+        """Record a contradiction and use dependency-directed backtracking to resolve.
+
+        Traces backward through justification chains to find the premises
+        (assumptions) responsible for the contradiction, then retracts the
+        premise with the fewest dependents (minimal disruption).
 
         Returns list of all node IDs whose truth value changed.
         """
@@ -136,11 +212,18 @@ class Network:
         if not all_in:
             return []
 
-        # Retract the node with fewest dependents (simple heuristic)
-        # A real AGM implementation would use entrenchment scoring
-        candidates = [(nid, len(self.nodes[nid].dependents)) for nid in node_ids]
-        candidates.sort(key=lambda x: x[1])
-        victim_id = candidates[0][0]
+        # Dependency-directed backtracking: find responsible premises
+        culprits = self.find_culprits(node_ids)
+
+        if culprits:
+            # Retract the premise with fewest dependents
+            victim_id = culprits[0]["premise"]
+            self._log("backtrack", victim_id, f"culprit for {nogood_id}")
+        else:
+            # Fallback: retract the nogood node with fewest dependents
+            candidates = [(nid, len(self.nodes[nid].dependents)) for nid in node_ids]
+            candidates.sort(key=lambda x: x[1])
+            victim_id = candidates[0][0]
 
         return self.retract(victim_id)
 

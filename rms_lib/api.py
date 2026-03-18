@@ -170,15 +170,48 @@ def explain_node(node_id: str, db_path: str = DEFAULT_DB) -> dict:
         return {"steps": steps}
 
 
-def add_nogood(node_ids: list[str], db_path: str = DEFAULT_DB) -> dict:
-    """Record a contradiction and retract the least entrenched node.
+def trace_assumptions(node_id: str, db_path: str = DEFAULT_DB) -> dict:
+    """Trace backward to find all premises a node rests on.
 
-    Returns: {"nogood_id": str, "nodes": list[str], "changed": list[str]}
+    Returns: {"node_id": str, "premises": list[str]}
+    """
+    with _with_network(db_path) as net:
+        premises = net.trace_assumptions(node_id)
+        return {"node_id": node_id, "premises": premises}
+
+
+def find_culprits(node_ids: list[str], db_path: str = DEFAULT_DB) -> dict:
+    """Find premises that could be retracted to resolve a contradiction.
+
+    Returns: {"culprits": list[dict]}
+    """
+    with _with_network(db_path) as net:
+        culprits = net.find_culprits(node_ids)
+        return {"culprits": culprits}
+
+
+def add_nogood(node_ids: list[str], db_path: str = DEFAULT_DB) -> dict:
+    """Record a contradiction and use backtracking to resolve.
+
+    Returns: {"nogood_id": str, "nodes": list[str], "changed": list[str], "backtracked_to": str | None}
     """
     with _with_network(db_path, write=True) as net:
+        # Find culprits before retraction for reporting
+        all_in = all(
+            nid in net.nodes and net.nodes[nid].truth_value == "IN"
+            for nid in node_ids
+        )
+        culprits = net.find_culprits(node_ids) if all_in else []
+        backtracked_to = culprits[0]["premise"] if culprits else None
+
         changed = net.add_nogood(node_ids)
         ng = net.nogoods[-1]
-        return {"nogood_id": ng.id, "nodes": ng.nodes, "changed": changed}
+        return {
+            "nogood_id": ng.id,
+            "nodes": ng.nodes,
+            "changed": changed,
+            "backtracked_to": backtracked_to,
+        }
 
 
 def get_belief_set(db_path: str = DEFAULT_DB) -> list[str]:

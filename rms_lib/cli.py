@@ -143,8 +143,29 @@ def cmd_nogood(args):
         sys.exit(1)
 
     print(f"Recorded {result['nogood_id']}: {', '.join(result['nodes'])}")
+    if result["backtracked_to"]:
+        print(f"Backtracked to premise: {result['backtracked_to']}")
     if result["changed"]:
         print(f"Retracted: {', '.join(result['changed'])}")
+
+
+def cmd_trace(args):
+    try:
+        result = api.trace_assumptions(args.node_id, db_path=args.db)
+    except KeyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    if not result["premises"]:
+        print(f"{args.node_id} is a premise (no dependencies).")
+        return
+
+    print(f"{args.node_id} rests on {len(result['premises'])} premise(s):")
+    for pid in result["premises"]:
+        node = api.show_node(pid, db_path=args.db)
+        marker = "+" if node["truth_value"] == "IN" else "-"
+        deps = f"  ({len(node['dependents'])} dependents)" if node["dependents"] else ""
+        print(f"  [{marker}] {pid}: {node['text'][:80]}{deps}")
 
 
 def cmd_propagate(args):
@@ -322,6 +343,10 @@ def main():
     p = sub.add_parser("nogood", help="Record a contradiction")
     p.add_argument("node_ids", nargs="+", help="Node IDs that cannot all be IN")
 
+    # trace
+    p = sub.add_parser("trace", help="Trace backward to find premises a node rests on")
+    p.add_argument("node_id", help="Node to trace")
+
     # propagate
     sub.add_parser("propagate", help="Recompute all truth values")
 
@@ -380,6 +405,7 @@ def main():
         "export-markdown": cmd_export_markdown,
         "check-stale": cmd_check_stale,
         "compact": cmd_compact,
+        "trace": cmd_trace,
         "search": cmd_search,
         "list": cmd_list,
     }
