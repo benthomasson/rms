@@ -12,7 +12,7 @@ from reasons_lib.storage import Storage
 
 @pytest.fixture
 def db_path(tmp_path):
-    return tmp_path / "test_rms.db"
+    return tmp_path / "test_reasons.db"
 
 
 class TestRoundTrip:

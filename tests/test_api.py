@@ -7,7 +7,7 @@ from reasons_lib import api
 
 @pytest.fixture
 def db_path(tmp_path):
-    p = str(tmp_path / "test_rms.db")
+    p = str(tmp_path / "test_reasons.db")
     api.init_db(db_path=p)
     return p
 
