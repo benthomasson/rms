@@ -72,8 +72,12 @@ class Network:
         self._log("add", id, node.truth_value)
         return node
 
-    def retract(self, node_id: str) -> list[str]:
+    def retract(self, node_id: str, reason: str = "") -> list[str]:
         """Mark a node OUT and propagate the retraction cascade.
+
+        Args:
+            node_id: Node to retract
+            reason: Why this node is being retracted (stored in metadata)
 
         Returns list of all node IDs whose truth value changed.
         """
@@ -85,8 +89,10 @@ class Network:
             return []
 
         node.truth_value = "OUT"
+        if reason:
+            node.metadata["retract_reason"] = reason
         changed = [node_id]
-        self._log("retract", node_id, "OUT")
+        self._log("retract", node_id, reason or "OUT")
 
         # Propagate to dependents
         changed.extend(self._propagate(node_id))

@@ -41,7 +41,7 @@ def cmd_add(args):
 
 def cmd_retract(args):
     try:
-        result = api.retract_node(args.node_id, db_path=args.db)
+        result = api.retract_node(args.node_id, reason=args.reason or "", db_path=args.db)
     except KeyError as e:
         print(f"Error: {e}", file=sys.stderr)
         sys.exit(1)
@@ -104,6 +104,9 @@ def cmd_show(args):
             print(f"  {j['type']}({ants}){label}")
     else:
         print("\nPremise (no justifications)")
+
+    if node["metadata"].get("retract_reason"):
+        print(f"\nRetract reason: {node['metadata']['retract_reason']}")
 
     if node["dependents"]:
         print(f"\nDependents: {', '.join(node['dependents'])}")
@@ -414,6 +417,7 @@ def main():
     # retract
     p = sub.add_parser("retract", help="Retract a node (mark OUT + cascade)")
     p.add_argument("node_id", help="Node to retract")
+    p.add_argument("--reason", help="Why this node is being retracted")
 
     # assert
     p = sub.add_parser("assert", help="Assert a node (mark IN + cascade)")

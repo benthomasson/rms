@@ -98,13 +98,18 @@ def add_node(
         return {"node_id": node_id, "truth_value": node.truth_value, "type": jtype}
 
 
-def retract_node(node_id: str, db_path: str = DEFAULT_DB) -> dict:
+def retract_node(node_id: str, reason: str = "", db_path: str = DEFAULT_DB) -> dict:
     """Retract a node and cascade.
+
+    Args:
+        node_id: Node to retract
+        reason: Why this node is being retracted
+        db_path: Path to database
 
     Returns: {"changed": list[str]}
     """
     with _with_network(db_path, write=True) as net:
-        changed = net.retract(node_id)
+        changed = net.retract(node_id, reason=reason)
         return {"changed": changed}
 
 
