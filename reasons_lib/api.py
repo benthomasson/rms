@@ -219,6 +219,15 @@ def summarize(
         return net.summarize(summary_id, text, over, source=source)
 
 
+def supersede(old_id: str, new_id: str, db_path: str = DEFAULT_DB) -> dict:
+    """Mark old_id as superseded by new_id. Old goes OUT when new is IN.
+
+    Returns: {"old_id": str, "new_id": str, "changed": list[str]}
+    """
+    with _with_network(db_path, write=True) as net:
+        return net.supersede(old_id, new_id)
+
+
 def challenge(
     target_id: str,
     reason: str,

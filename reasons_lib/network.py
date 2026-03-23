@@ -281,6 +281,60 @@ class Network:
 
         return self.retract(victim_id)
 
+    def supersede(self, old_id: str, new_id: str) -> dict:
+        """Mark old_id as superseded by new_id using the outlist mechanism.
+
+        Adds new_id to old_id's outlist. When new_id is IN, old_id
+        automatically goes OUT. If new_id is later retracted, old_id
+        comes back IN — the supersession is reversible.
+
+        Records supersession in both nodes' metadata for display.
+
+        Returns: {"old_id": str, "new_id": str, "changed": list[str]}
+        """
+        if old_id not in self.nodes:
+            raise KeyError(f"Node '{old_id}' not found")
+        if new_id not in self.nodes:
+            raise KeyError(f"Node '{new_id}' not found")
+
+        old_node = self.nodes[old_id]
+
+        # Add new_id to old_node's outlist
+        if old_node.justifications:
+            for j in old_node.justifications:
+                if new_id not in j.outlist:
+                    j.outlist.append(new_id)
+        else:
+            # Old node is a premise — convert to justified with outlist
+            old_node.justifications.append(
+                Justification(type="SL", antecedents=[], outlist=[new_id])
+            )
+
+        # Register new_id as affecting old_id
+        self.nodes[new_id].dependents.add(old_id)
+
+        # Record in metadata
+        old_node.metadata["superseded_by"] = new_id
+        supersedes = self.nodes[new_id].metadata.get("supersedes", [])
+        if old_id not in supersedes:
+            supersedes.append(old_id)
+        self.nodes[new_id].metadata["supersedes"] = supersedes
+
+        # Recompute and propagate
+        old_value = old_node.truth_value
+        new_value = self._compute_truth(old_node)
+        changed = []
+
+        if old_value != new_value:
+            old_node.truth_value = new_value
+            changed.append(old_id)
+            self._log("supersede", old_id, f"superseded by {new_id}")
+            changed.extend(self._propagate(old_id))
+        else:
+            self._log("supersede", old_id, f"superseded by {new_id} (unchanged)")
+
+        return {"old_id": old_id, "new_id": new_id, "changed": changed}
+
     def challenge(self, target_id: str, reason: str, challenge_id: str | None = None) -> dict:
         """Challenge a node — create a challenge node and add it to the target's outlist.
 

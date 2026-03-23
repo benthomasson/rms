@@ -165,6 +165,18 @@ def cmd_summarize(args):
     print(f"Created summary {result['summary_id']} [{result['truth_value']}] over {len(result['over'])} nodes")
 
 
+def cmd_supersede(args):
+    try:
+        result = api.supersede(args.old_id, args.new_id, db_path=args.db)
+    except KeyError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Superseded {result['old_id']} by {result['new_id']}")
+    if result["changed"]:
+        print(f"Changed: {', '.join(result['changed'])}")
+
+
 def cmd_challenge(args):
     try:
         result = api.challenge(
@@ -460,6 +472,11 @@ def main():
     p.add_argument("--over", required=True, metavar="A,B,C", help="Comma-separated node IDs to summarize")
     p.add_argument("--source", help="Provenance (repo:path)")
 
+    # supersede
+    p = sub.add_parser("supersede", help="Mark a belief as superseded by another")
+    p.add_argument("old_id", help="Belief being superseded")
+    p.add_argument("new_id", help="Belief that supersedes it")
+
     # challenge
     p = sub.add_parser("challenge", help="Challenge a node — target goes OUT")
     p.add_argument("target_id", help="Node to challenge")
@@ -568,6 +585,7 @@ def main():
         "compact": cmd_compact,
         "convert-to-premise": cmd_convert_to_premise,
         "summarize": cmd_summarize,
+        "supersede": cmd_supersede,
         "challenge": cmd_challenge,
         "defend": cmd_defend,
         "trace": cmd_trace,
