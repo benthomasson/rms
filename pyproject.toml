@@ -3,9 +3,11 @@ requires = ["setuptools>=68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "reasons"
-version = "0.1.0"
+name = "ftl-reasons"
+version = "0.2.0"
 description = "Reasons — automatic belief retraction and dependency-directed backtracking"
+readme = "README.md"
+license = "MIT"
 requires-python = ">=3.10"
 dependencies = []
 
