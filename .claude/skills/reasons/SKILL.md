@@ -1,8 +1,8 @@
 ---
-name: rms
-description: Reason Maintenance System — track justified beliefs with automatic retraction cascades and restoration
+name: reasons
+description: Reasons — track justified beliefs with automatic retraction cascades and restoration
 argument-hint: "[init|add|retract|assert|challenge|defend|convert-to-premise|summarize|nogood|trace|status|show|explain|search|list|hash-sources|check-stale|compact|propagate|import-beliefs|import-json|export|export-markdown|log] [args...]"
-allowed-tools: Bash(reasons *), Bash(cd * && uv run reasons *), Bash(uvx *rms*), Read, Grep, Glob
+allowed-tools: Bash(reasons *), Bash(cd * && uv run reasons *), Bash(uvx *reasons*), Read, Grep, Glob
 ---
 
 You are managing a dependency network using the `rms` CLI tool. Unlike `beliefs` (which tracks independent facts for expert registries), `rms` tracks **justified conclusions** where beliefs depend on other beliefs and changes propagate automatically.
@@ -41,24 +41,24 @@ Try these in order until one works:
 ## Subcommand Behavior
 
 ### `init`
-Run `reasons init` to create `rms.db` in the current directory. Use `--force` to reinitialize.
+Run `reasons init` to create `reasons.db` in the current directory. Use `--force` to reinitialize.
 
 ### `add`
 Add a node to the network. Three forms:
 
 ```bash
 # Premise (no justification — IN by default)
-rms add node-id "Description of the belief"
+reasons add node-id "Description of the belief"
 
 # Justified by other nodes (SL = all antecedents must be IN)
-rms add node-id "Description" --sl antecedent-a,antecedent-b
+reasons add node-id "Description" --sl antecedent-a,antecedent-b
 
 # Non-monotonic: believe X unless Y (outlist)
-rms add node-id "Default holds" --unless counter-evidence
-rms add node-id "X if A and not Y" --sl dep-a --unless dep-y
+reasons add node-id "Default holds" --unless counter-evidence
+reasons add node-id "X if A and not Y" --sl dep-a --unless dep-y
 
 # With provenance
-rms add node-id "Description" --sl dep-a --source "repo:path/to/file.md" --label "why this justification holds"
+reasons add node-id "Description" --sl dep-a --source "repo:path/to/file.md" --label "why this justification holds"
 ```
 
 If the user describes a belief in natural language, convert it:
@@ -112,13 +112,13 @@ Run `reasons convert-to-premise node-id`. Strips all justifications from a node,
 Run `reasons hash-sources`. Backfills SHA-256 source hashes for nodes that have a source path but no stored hash. Use `--force` to re-hash all nodes (after confirming source changes are expected).
 
 ### `import-beliefs`
-Import a `beliefs.md` registry into the RMS network:
+Import a `beliefs.md` registry into the Reasons network:
 
 ```bash
-rms import-beliefs path/to/beliefs.md
+reasons import-beliefs path/to/beliefs.md
 ```
 
-This converts a beliefs CLI registry into RMS nodes:
+This converts a beliefs CLI registry into Reasons nodes:
 - IN claims with `Depends on:` → SL-justified nodes
 - IN claims without dependencies → premises
 - STALE/OUT claims → retracted nodes (preserved for restoration)
@@ -169,87 +169,87 @@ Options:
 
 ### Starting a new research registry
 ```bash
-rms init
-rms add observation-1 "What we observed" --source "repo:entries/2026/03/17/finding.md"
-rms add observation-2 "Another observation"
-rms add conclusion-1 "What follows from both" --sl observation-1,observation-2
+reasons init
+reasons add observation-1 "What we observed" --source "repo:entries/2026/03/17/finding.md"
+reasons add observation-2 "Another observation"
+reasons add conclusion-1 "What follows from both" --sl observation-1,observation-2
 ```
 
 ### Importing from beliefs and then working
 ```bash
-rms init --force
-rms import-beliefs ~/git/my-project/beliefs.md
-rms status
+reasons init --force
+reasons import-beliefs ~/git/my-project/beliefs.md
+reasons status
 # Now use retract/assert as evidence changes
 ```
 
 ### Evidence invalidates a foundation
 ```bash
-rms retract observation-1
+reasons retract observation-1
 # Cascade: conclusion-1 also goes OUT (lost its justification)
-rms status  # see what's still believed
-rms explain conclusion-1  # see why it went OUT
+reasons status  # see what's still believed
+reasons explain conclusion-1  # see why it went OUT
 ```
 
 ### New evidence restores a belief
 ```bash
-rms assert observation-1
+reasons assert observation-1
 # Cascade: conclusion-1 restored (justification valid again)
 ```
 
 ### Recording a contradiction
 ```bash
-rms nogood belief-a belief-b
+reasons nogood belief-a belief-b
 # One gets retracted, cascade propagates
 ```
 
 ### Generating readable output
 ```bash
-rms export-markdown -o beliefs.md
+reasons export-markdown -o beliefs.md
 # beliefs.md is now a generated snapshot, not an input
 ```
 
 ### Checking for stale sources
 ```bash
-rms check-stale
+reasons check-stale
 # Flags nodes whose source files have changed since registration
 ```
 
 ### Context injection for agents
 ```bash
-rms compact --budget 500
+reasons compact --budget 500
 # Token-budgeted summary suitable for CLAUDE.md or system prompts
 ```
 
 ### Finding specific beliefs
 ```bash
-rms search "calibration"
-rms list --premises              # what are the foundations?
-rms list --has-dependents        # what's load-bearing?
-rms list --status OUT            # what was retracted?
-rms list --challenged            # what has active challenges?
+reasons search "calibration"
+reasons list --premises              # what are the foundations?
+reasons list --has-dependents        # what's load-bearing?
+reasons list --status OUT            # what was retracted?
+reasons list --challenged            # what has active challenges?
 ```
 
 ### Dialectical argumentation (peer review)
 ```bash
 # Reviewer challenges a belief
-rms challenge velocity-constraint "Not derived — postulated without proof"
+reasons challenge velocity-constraint "Not derived — postulated without proof"
 # velocity-constraint goes OUT, all dependents cascade
 
 # Author defends
-rms defend velocity-constraint challenge-velocity-constraint \
+reasons defend velocity-constraint challenge-velocity-constraint \
   "Follows from variational principle on elastic medium"
 # challenge goes OUT, velocity-constraint restored
 
 # Reviewer challenges the defense
-rms challenge defense-challenge-velocity-constraint "Variational argument is circular"
+reasons challenge defense-challenge-velocity-constraint "Variational argument is circular"
 # defense goes OUT, challenge restored, velocity-constraint OUT again
 ```
 
 ### Tracing assumptions
 ```bash
-rms trace conclusion-node        # what premises does this rest on?
-rms explain conclusion-node      # why is this IN or OUT? (forward trace)
+reasons trace conclusion-node        # what premises does this rest on?
+reasons explain conclusion-node      # why is this IN or OUT? (forward trace)
 ```
 
 ## After Any Command
@@ -265,4 +265,4 @@ rms explain conclusion-node      # why is this IN or OUT? (forward trace)
 
 ## Storage
 
-RMS uses SQLite (`rms.db`), not markdown. This provides ACID transactions during propagation cascades — a retraction that touches 20 nodes either completes fully or not at all. The `--db` flag overrides the database path.
+Reasons uses SQLite (`reasons.db`), not markdown. This provides ACID transactions during propagation cascades — a retraction that touches 20 nodes either completes fully or not at all. The `--db` flag overrides the database path.

@@ -1,4 +1,4 @@
-# RMS — Reason Maintenance System
+# Reasons
 
 An implementation of Doyle's (1979) Truth Maintenance System. Tracks beliefs as nodes in a dependency network with automatic retraction cascades and restoration.
 
@@ -17,13 +17,13 @@ Justifications support **non-monotonic reasoning** via the **outlist**: "believe
 ## Install
 
 ```bash
-uv tool install -e ~/git/rms
+uv tool install -e ~/git/reasons
 ```
 
 Or run directly:
 
 ```bash
-cd ~/git/rms
+cd ~/git/reasons
 uv run reasons <command>
 ```
 
@@ -31,18 +31,18 @@ uv run reasons <command>
 
 ```bash
 # Initialize database
-rms init
+reasons init
 
 # Add premises
-rms add source-uses-langgraph "Source code uses LangGraph" --source "agents-python:src/graph.py"
-rms add graph-has-cycles "Graph contains cycles"
+reasons add source-uses-langgraph "Source code uses LangGraph" --source "agents-python:src/graph.py"
+reasons add graph-has-cycles "Graph contains cycles"
 
 # Add derived nodes with SL justifications
-rms add topology-is-static "Graph topology is static" --sl source-uses-langgraph --label "observed from source"
-rms add no-runtime-modification "No runtime graph modification" --sl topology-is-static
+reasons add topology-is-static "Graph topology is static" --sl source-uses-langgraph --label "observed from source"
+reasons add no-runtime-modification "No runtime graph modification" --sl topology-is-static
 
 # See what's believed
-rms status
+reasons status
 #   [+] graph-has-cycles: Graph contains cycles  (premise)
 #   [+] no-runtime-modification: No runtime graph modification  (1 justification)
 #   [+] source-uses-langgraph: Source code uses LangGraph  (premise)
@@ -51,10 +51,10 @@ rms status
 # 4/4 IN
 
 # Retract a premise — cascade propagates
-rms retract source-uses-langgraph
+reasons retract source-uses-langgraph
 # Retracted: source-uses-langgraph, topology-is-static, no-runtime-modification
 
-rms status
+reasons status
 #   [+] graph-has-cycles: Graph contains cycles  (premise)
 #   [-] no-runtime-modification: No runtime graph modification  (1 justification)
 #   [-] source-uses-langgraph: Source code uses LangGraph  (premise)
@@ -63,99 +63,99 @@ rms status
 # 1/4 IN
 
 # Restore — dependents come back automatically
-rms assert source-uses-langgraph
+reasons assert source-uses-langgraph
 # Asserted: source-uses-langgraph, topology-is-static, no-runtime-modification
 
 # Record a contradiction
-rms add graph-is-dynamic "Graph is dynamically modified"
-rms nogood topology-is-static graph-is-dynamic
+reasons add graph-is-dynamic "Graph is dynamically modified"
+reasons nogood topology-is-static graph-is-dynamic
 # Recorded nogood-001: topology-is-static, graph-is-dynamic
 # Retracted: graph-is-dynamic
 
 # Explain why a node is IN or OUT
-rms explain no-runtime-modification
+reasons explain no-runtime-modification
 #   [+] no-runtime-modification: SL justification valid — antecedents: topology-is-static
 #   [+] topology-is-static: SL justification valid — antecedents: source-uses-langgraph [observed from source]
 #   [+] source-uses-langgraph: premise
 
 # Show node details
-rms show topology-is-static
+reasons show topology-is-static
 
 # View propagation history
-rms log
+reasons log
 
 # Export as JSON
-rms export
+reasons export
 
 # Import from a beliefs CLI registry
-rms import-beliefs ~/git/physics-pi-meta/beliefs.md
+reasons import-beliefs ~/git/physics-pi-meta/beliefs.md
 # Imported 39 claims (2 retracted)
 # Imported 8 nogoods
 
 # nogoods.md is auto-detected next to beliefs.md, or specify explicitly:
-rms import-beliefs ~/git/physics-pi-meta/beliefs.md --nogoods ~/git/physics-pi-meta/nogoods.md
+reasons import-beliefs ~/git/physics-pi-meta/beliefs.md --nogoods ~/git/physics-pi-meta/nogoods.md
 
 # After import, cascading works on the imported dependency graph:
-rms retract beliefs-improve-accuracy
+reasons retract beliefs-improve-accuracy
 # Retracted: beliefs-improve-accuracy, engineering-intuition-unreliable, beliefs-beat-expert-prompting, ...
 
 # Search for nodes
-rms search "tool-use"
+reasons search "tool-use"
 #   [+] tool-use-calibration-determines-benefit: Whether beliefs help a model...  (5 dependents)
 #   [+] tool-deference-failure-mode: Models with poor tool-use calibration...
 # 7 results
 
 # List premises (foundations of the argument)
-rms list --premises
+reasons list --premises
 # List nodes that others depend on
-rms list --has-dependents
+reasons list --has-dependents
 # List only OUT nodes
-rms list --status OUT
+reasons list --status OUT
 
 # Export as readable markdown
-rms export-markdown -o beliefs.md
+reasons export-markdown -o beliefs.md
 
 # Check for source file changes
-rms check-stale
+reasons check-stale
 # 5 fresh, 14 STALE (of 19 checked)
 
 # Token-budgeted summary for context injection
-rms compact --budget 500
+reasons compact --budget 500
 
 # Non-monotonic reasoning: believe X unless Y
-rms add default-approx "Newtonian approximation holds" --unless strong-field
-rms assert strong-field  # default-approx goes OUT automatically
-rms retract strong-field  # default-approx restored
+reasons add default-approx "Newtonian approximation holds" --unless strong-field
+reasons assert strong-field  # default-approx goes OUT automatically
+reasons retract strong-field  # default-approx restored
 
 # Backfill source hashes
-rms hash-sources
+reasons hash-sources
 # 26 backfilled
 
 # Trace assumptions — what premises does a conclusion rest on?
-rms trace no-single-best-configuration
+reasons trace no-single-best-configuration
 # no-single-best-configuration rests on 1 premise(s):
 #   [+] beliefs-improve-accuracy  (7 dependents)
 
 # Challenge a belief — target goes OUT
-rms challenge velocity-constraint "Not derived — postulated"
+reasons challenge velocity-constraint "Not derived — postulated"
 # Challenged velocity-constraint with challenge-velocity-constraint
 # Changed: velocity-constraint, acoustic-metric-schwarzschild, ...
 
 # Defend against a challenge — target restored
-rms defend velocity-constraint challenge-velocity-constraint \
+reasons defend velocity-constraint challenge-velocity-constraint \
   "Follows from variational principle on elastic medium"
 # Defended velocity-constraint with defense-challenge-velocity-constraint
 # Changed: challenge-velocity-constraint, velocity-constraint, ...
 
 # List challenged nodes
-rms list --challenged
+reasons list --challenged
 ```
 
 ## Commands
 
 | Command | Description |
 |---------|-------------|
-| `reasons init` | Create rms.db |
+| `reasons init` | Create reasons.db |
 | `reasons add ID "text"` | Add a premise |
 | `reasons add ID "text" --sl a,b` | Add with SL justification (all antecedents must be IN) |
 | `reasons add ID "text" --sl a --unless y` | Add with outlist (must be OUT for justification to hold) |
@@ -186,7 +186,7 @@ rms list --challenged
 uv run --extra test pytest tests/ -v
 ```
 
-182 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, dependency-directed backtracking, non-monotonic justifications (outlist), dialectical argumentation (challenge/defend), explain traces, SQLite round-trips, beliefs.md import, export-markdown, check-stale, hash-sources, compact, search, and list.
+211 tests covering propagation, retraction cascades, restoration, multiple justifications, diamond dependencies, nogoods, dependency-directed backtracking, non-monotonic justifications (outlist), dialectical argumentation (challenge/defend), explain traces, SQLite round-trips, beliefs.md import, export-markdown, check-stale, hash-sources, compact, search, and list.
 
 ## References
 
