@@ -39,6 +39,11 @@ CREATE TABLE IF NOT EXISTS nogoods (
     resolution TEXT DEFAULT ''
 );
 
+CREATE TABLE IF NOT EXISTS repos (
+    name TEXT PRIMARY KEY,
+    path TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS propagation_log (
     rowid INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp TEXT NOT NULL,
@@ -73,6 +78,7 @@ class Storage:
             self.conn.execute("DELETE FROM nodes_fts")
             self.conn.execute("DELETE FROM nodes")
             self.conn.execute("DELETE FROM nogoods")
+            self.conn.execute("DELETE FROM repos")
             self.conn.execute("DELETE FROM propagation_log")
 
             for node in network.nodes.values():
@@ -105,6 +111,12 @@ class Storage:
                     "INSERT INTO nogoods (id, nodes_json, discovered, resolution) "
                     "VALUES (?, ?, ?, ?)",
                     (nogood.id, json.dumps(nogood.nodes), nogood.discovered, nogood.resolution),
+                )
+
+            for name, path in network.repos.items():
+                self.conn.execute(
+                    "INSERT INTO repos (name, path) VALUES (?, ?)",
+                    (name, path),
                 )
 
             for entry in network.log:
@@ -174,6 +186,14 @@ class Storage:
                 discovered=discovered,
                 resolution=resolution,
             ))
+
+        # Load repos
+        try:
+            repos_cursor = self.conn.execute("SELECT name, path FROM repos")
+            for name, path in repos_cursor:
+                network.repos[name] = path
+        except Exception:
+            pass  # repos table may not exist in old databases
 
         # Load log
         log_cursor = self.conn.execute(

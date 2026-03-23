@@ -18,6 +18,26 @@ from . import Justification, Node, Nogood
 from .network import Network
 
 
+def parse_repos(text: str) -> dict[str, str]:
+    """Parse the ## Repos section from a beliefs.md file.
+
+    Returns a dict of repo name → path.
+    """
+    repos = {}
+    in_repos = False
+    for line in text.split("\n"):
+        if line.strip() == "## Repos":
+            in_repos = True
+            continue
+        if in_repos and line.startswith("## "):
+            break
+        if in_repos and line.startswith("- "):
+            parts = line[2:].split(":", 1)
+            if len(parts) == 2:
+                repos[parts[0].strip()] = parts[1].strip()
+    return repos
+
+
 def parse_beliefs(text: str) -> list[dict]:
     """Parse a beliefs.md file into a list of claim dicts."""
     claims = []
@@ -117,6 +137,10 @@ def import_into_network(
 
     Returns a summary dict with counts of what was imported.
     """
+    # Parse and store repos
+    repos = parse_repos(beliefs_text)
+    network.repos.update(repos)
+
     claims = parse_beliefs(beliefs_text)
 
     # Sort claims so that dependencies are added before dependents.

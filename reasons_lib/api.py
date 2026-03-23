@@ -316,6 +316,7 @@ def export_network(db_path: str = DEFAULT_DB) -> dict:
                 {"id": ng.id, "nodes": ng.nodes, "discovered": ng.discovered, "resolution": ng.resolution}
                 for ng in net.nogoods
             ],
+            "repos": dict(net.repos),
         }
 
 
@@ -473,7 +474,30 @@ def import_json(json_file: str, db_path: str = DEFAULT_DB) -> dict:
             net.nogoods.append(nogood)
             nogoods_imported += 1
 
+        # Import repos
+        for name, path in data.get("repos", {}).items():
+            net.repos[name] = path
+
         return {"nodes_imported": nodes_imported, "nogoods_imported": nogoods_imported}
+
+
+def add_repo(name: str, path: str, db_path: str = DEFAULT_DB) -> dict:
+    """Add a repo to the network.
+
+    Returns: {"name": str, "path": str}
+    """
+    with _with_network(db_path, write=True) as net:
+        net.repos[name] = path
+        return {"name": name, "path": path}
+
+
+def list_repos(db_path: str = DEFAULT_DB) -> dict:
+    """List all repos.
+
+    Returns: {"repos": dict[str, str]}
+    """
+    with _with_network(db_path) as net:
+        return {"repos": dict(net.repos)}
 
 
 def export_markdown(db_path: str = DEFAULT_DB) -> str:
@@ -484,7 +508,7 @@ def export_markdown(db_path: str = DEFAULT_DB) -> str:
     from .export_markdown import export_markdown as _export
 
     with _with_network(db_path) as net:
-        return _export(net)
+        return _export(net, repos=net.repos)
 
 
 def check_stale(

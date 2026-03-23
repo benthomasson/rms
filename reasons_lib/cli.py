@@ -265,6 +265,21 @@ def cmd_log(args):
         print(f"  {entry['timestamp']}  {entry['action']:10s}  {entry['target']:20s}  {entry['value']}")
 
 
+def cmd_add_repo(args):
+    result = api.add_repo(args.name, args.path, db_path=args.db)
+    print(f"Added repo {result['name']}: {result['path']}")
+
+
+def cmd_repos(args):
+    result = api.list_repos(db_path=args.db)
+    if not result["repos"]:
+        print("No repos registered.")
+        return
+    for name, path in sorted(result["repos"].items()):
+        print(f"  {name}: {path}")
+    print(f"\n{len(result['repos'])} repo(s)")
+
+
 def cmd_import_beliefs(args):
     try:
         result = api.import_beliefs(
@@ -473,6 +488,14 @@ def main():
     p = sub.add_parser("log", help="Show propagation history")
     p.add_argument("--last", type=int, help="Show only last N entries")
 
+    # add-repo
+    p = sub.add_parser("add-repo", help="Register a repo name and path")
+    p.add_argument("name", help="Repo name (used in source paths)")
+    p.add_argument("path", help="Filesystem path to the repo")
+
+    # repos
+    sub.add_parser("repos", help="List registered repos")
+
     # import-beliefs
     p = sub.add_parser("import-beliefs", help="Import a beliefs.md registry")
     p.add_argument("beliefs_file", help="Path to beliefs.md")
@@ -534,6 +557,8 @@ def main():
         "nogood": cmd_nogood,
         "propagate": cmd_propagate,
         "log": cmd_log,
+        "add-repo": cmd_add_repo,
+        "repos": cmd_repos,
         "import-beliefs": cmd_import_beliefs,
         "import-json": cmd_import_json,
         "export": cmd_export,

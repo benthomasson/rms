@@ -20,6 +20,7 @@ class Network:
     def __init__(self):
         self.nodes: dict[str, Node] = {}
         self.nogoods: list[Nogood] = []
+        self.repos: dict[str, str] = {}  # name → path mapping
         self.log: list[dict] = []  # propagation audit trail
 
     def add_node(
