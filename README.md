@@ -17,14 +17,19 @@ Justifications support **non-monotonic reasoning** via the **outlist**: "believe
 ## Install
 
 ```bash
-uv tool install -e ~/git/reasons
+pip install ftl-reasons
 ```
 
-Or run directly:
+Or with uv:
 
 ```bash
-cd ~/git/reasons
-uv run reasons <command>
+uv tool install ftl-reasons
+```
+
+Or run without installing:
+
+```bash
+uvx ftl-reasons <command>
 ```
 
 ## Usage
