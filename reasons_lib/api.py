@@ -672,6 +672,41 @@ def import_json(json_file: str, db_path: str = DEFAULT_DB) -> dict:
         return {"nodes_imported": nodes_imported, "nogoods_imported": nogoods_imported}
 
 
+def derive_prompt(domain: str | None = None, db_path: str = DEFAULT_DB) -> dict:
+    """Build a derive prompt from the current network.
+
+    Returns: {"prompt": str, "stats": dict}
+    """
+    from .derive import build_prompt
+
+    data = export_network(db_path=db_path)
+    nodes = data.get("nodes", {})
+    if not nodes:
+        raise ValueError("No nodes in the network")
+
+    prompt, stats = build_prompt(nodes, domain=domain)
+    return {"prompt": prompt, "stats": stats}
+
+
+def derive_apply(proposals: list[dict], db_path: str = DEFAULT_DB) -> dict:
+    """Apply validated derive proposals to the network.
+
+    Returns: {"added": list[dict], "failed": list[dict]}
+    """
+    from .derive import apply_proposals
+    results = apply_proposals(proposals, db_path=db_path)
+
+    added = []
+    failed = []
+    for p, result in results:
+        if isinstance(result, dict):
+            added.append({"id": p["id"], "truth_value": result["truth_value"]})
+        else:
+            failed.append({"id": p["id"], "error": result})
+
+    return {"added": added, "failed": failed}
+
+
 def add_repo(name: str, path: str, db_path: str = DEFAULT_DB) -> dict:
     """Add a repo to the network.
 

@@ -1,0 +1,363 @@
+"""Derive deeper reasoning chains from existing beliefs.
+
+Analyzes the belief network for opportunities to combine existing
+conclusions into higher-level claims, and to connect positive and
+negative chains via outlist semantics (GATE beliefs).
+
+When agent-namespaced nodes are present (from import-agent), groups
+beliefs by agent and encourages cross-agent derivations.
+"""
+
+import re
+import subprocess
+import sys
+from collections import defaultdict
+from pathlib import Path
+
+from . import api
+
+
+DERIVE_PROMPT = """\
+You are a reasoning architect analyzing a belief network. Your task is to \
+identify opportunities for deeper derived conclusions by combining existing beliefs.
+
+{domain_context}
+
+## Background
+
+A Reason Maintenance System (RMS) tracks beliefs with justifications and automatic retraction \
+cascades. There are three kinds of nodes:
+
+1. **Base premises** (depth-0): Observable facts with no justifications
+2. **Derived conclusions** (depth-1+): Justified by antecedents via SL (support-list) rules
+3. **Outlist-gated conclusions**: Justified by antecedents UNLESS certain nodes are IN \
+   (the conclusion is OUT while the outlist node is IN, and flips IN when it goes OUT)
+
+When a base premise is retracted, all derived conclusions that depend on it cascade OUT \
+automatically. This is the key value — maintaining consistency without manual intervention.
+
+## Your Task
+
+Given the existing beliefs and derived conclusions below, propose NEW derived conclusions that:
+
+1. **Combine existing conclusions** into higher-level claims (depth N+1 from depth N)
+2. **Group related base beliefs** into thematic conclusions (new depth-1)
+3. **Connect positive and negative chains** via outlist semantics — where a positive claim \
+   should only hold when a negative claim (bug/issue/gap) is OUT
+{cross_agent_task}
+
+## Rules
+
+- Each proposed conclusion must have at least 2 antecedents
+- Antecedents must be existing belief IDs from the list below
+- Prefer combining existing derived beliefs (deeper chains) over just grouping base beliefs
+- For outlist-gated beliefs: the antecedent should be a positive claim, the unless should be \
+  a negative claim (bug, gap, issue, fragility)
+- Don't propose conclusions that merely restate a single antecedent
+- Don't propose conclusions whose antecedents are unrelated (no forced connections)
+- Each conclusion should represent a genuine emergent property or insight
+
+## Output Format
+
+For each proposed conclusion, output EXACTLY this format:
+
+### DERIVE <belief-id-in-kebab-case>
+<one-line claim text>
+- Antecedents: <comma-separated list of existing belief IDs>
+- Label: <brief justification rationale>
+
+For outlist-gated conclusions:
+
+### GATE <belief-id-in-kebab-case>
+<one-line claim text>
+- Antecedents: <comma-separated list of existing belief IDs>
+- Unless: <comma-separated list of belief IDs that must be OUT>
+- Label: <brief justification rationale>
+
+---
+
+## Existing Beliefs
+
+{beliefs_section}
+
+## Existing Derived Conclusions
+
+{derived_section}
+
+## Statistics
+
+- Total IN beliefs: {total_in}
+- Existing derived: {total_derived}
+- Max depth: {max_depth}
+{agents_stats}
+"""
+
+CROSS_AGENT_TASK = """
+4. **Derive cross-agent beliefs** that combine knowledge from different agents. \
+   These are especially valuable — they represent architectural knowledge that \
+   spans multiple codebases or domains. A cross-agent belief is IN only when \
+   ALL contributing agents agree."""
+
+
+def _get_depth(node_id, nodes, derived, memo=None):
+    """Compute the depth of a node in the reasoning chain."""
+    if memo is None:
+        memo = {}
+    if node_id in memo:
+        return memo[node_id]
+    if node_id not in derived:
+        memo[node_id] = 0
+        return 0
+    max_d = 0
+    for j in derived[node_id].get("justifications", []):
+        for a in j.get("antecedents", []):
+            max_d = max(max_d, _get_depth(a, nodes, derived, memo))
+    memo[node_id] = max_d + 1
+    return max_d + 1
+
+
+def _detect_agents(nodes):
+    """Detect agent namespaces from node IDs.
+
+    Returns dict of agent_name -> list of node IDs.
+    Agent nodes have IDs like 'agent-name:belief-id' and metadata
+    with an 'agent' field.
+    """
+    agents = defaultdict(list)
+    for nid, node in nodes.items():
+        if ":" in nid:
+            agent = nid.split(":")[0]
+            # Skip the :active premise nodes
+            if nid.endswith(":active"):
+                continue
+            agents[agent].append(nid)
+    return dict(agents)
+
+
+def _build_beliefs_section(nodes, derived, agents=None, max_beliefs=300):
+    """Build a compact beliefs section for the derive prompt."""
+    lines = []
+    in_nodes = {k: v for k, v in nodes.items()
+                if v.get("truth_value") == "IN" and k not in derived}
+
+    if agents:
+        # Group by agent
+        count = 0
+        for agent_name in sorted(agents, key=lambda a: -len(agents[a])):
+            agent_beliefs = {k: v for k, v in in_nodes.items()
+                            if k.startswith(f"{agent_name}:")}
+            if not agent_beliefs:
+                continue
+            lines.append(f"\n### Agent: {agent_name} ({len(agent_beliefs)} beliefs)")
+            for belief_id in sorted(agent_beliefs):
+                if count >= max_beliefs:
+                    break
+                text = agent_beliefs[belief_id]["text"][:120]
+                lines.append(f"- `{belief_id}`: {text}")
+                count += 1
+            if count >= max_beliefs:
+                break
+
+        # Non-agent beliefs
+        non_agent = {k: v for k, v in in_nodes.items() if ":" not in k}
+        if non_agent:
+            lines.append(f"\n### Local beliefs ({len(non_agent)} beliefs)")
+            for belief_id in sorted(non_agent):
+                if count >= max_beliefs:
+                    break
+                text = non_agent[belief_id]["text"][:120]
+                lines.append(f"- `{belief_id}`: {text}")
+                count += 1
+    else:
+        # Group by prefix (original code-expert behavior)
+        groups = defaultdict(list)
+        for k, v in in_nodes.items():
+            prefix = k.split("-")[0] if "-" in k else k
+            groups[prefix].append((k, v["text"][:120]))
+
+        count = 0
+        for prefix in sorted(groups, key=lambda p: -len(groups[p])):
+            if count >= max_beliefs:
+                break
+            lines.append(f"\n### {prefix} ({len(groups[prefix])} beliefs)")
+            for belief_id, text in sorted(groups[prefix]):
+                if count >= max_beliefs:
+                    break
+                lines.append(f"- `{belief_id}`: {text}")
+                count += 1
+
+    return "\n".join(lines)
+
+
+def _build_derived_section(nodes, derived):
+    """Build the derived conclusions section for the derive prompt."""
+    memo = {}
+    lines = []
+    for k in sorted(derived, key=lambda x: -_get_depth(x, nodes, derived, memo)):
+        depth = _get_depth(k, nodes, derived, memo)
+        text = nodes[k]["text"][:150]
+        justs = derived[k]["justifications"]
+        antes = justs[0].get("antecedents", []) if justs else []
+        outlist = justs[0].get("outlist", []) if justs else []
+        status = nodes[k].get("truth_value", "?")
+
+        lines.append(f"\n#### [{status}] depth-{depth}: `{k}`")
+        lines.append(text)
+        lines.append(f"- Antecedents: {', '.join(antes)}")
+        if outlist:
+            lines.append(f"- Unless: {', '.join(outlist)}")
+
+    return "\n".join(lines) if lines else "(No derived conclusions yet)"
+
+
+def parse_proposals(response):
+    """Parse DERIVE and GATE proposals from LLM response."""
+    proposals = []
+    pattern = re.compile(
+        r"### (DERIVE|GATE) (\S+)\n"
+        r"(.+?)\n"
+        r"- Antecedents: (.+?)\n"
+        r"(?:- Unless: (.+?)\n)?"
+        r"- Label: (.+?)(?:\n|$)",
+    )
+    for match in pattern.finditer(response):
+        proposal = {
+            "kind": match.group(1).lower(),
+            "id": match.group(2),
+            "text": match.group(3).strip(),
+            "antecedents": [a.strip() for a in match.group(4).split(",")],
+            "unless": [u.strip() for u in match.group(5).split(",")]
+                      if match.group(5) else [],
+            "label": match.group(6).strip(),
+        }
+        proposals.append(proposal)
+    return proposals
+
+
+def build_prompt(nodes, domain=None):
+    """Build the full derive prompt from a network's nodes dict.
+
+    Returns: (prompt_text, stats_dict)
+    """
+    derived = {k: v for k, v in nodes.items()
+               if v.get("justifications") and len(v["justifications"]) > 0}
+    in_nodes = {k: v for k, v in nodes.items() if v.get("truth_value") == "IN"}
+    memo = {}
+    max_depth = max((_get_depth(k, nodes, derived, memo) for k in derived), default=0)
+
+    agents = _detect_agents(nodes)
+
+    # Domain context
+    if domain:
+        domain_context = f"The beliefs in this network are about: {domain}"
+    elif agents:
+        agent_list = ", ".join(sorted(agents.keys()))
+        domain_context = (
+            f"This network contains beliefs from multiple agents: {agent_list}. "
+            f"Each agent is an expert on a different codebase or domain."
+        )
+    else:
+        domain_context = ""
+
+    # Cross-agent task instructions
+    cross_agent_task = CROSS_AGENT_TASK if agents else ""
+
+    # Agent stats
+    agents_stats = ""
+    if agents:
+        parts = [f"- Agents: {len(agents)}"]
+        for name in sorted(agents):
+            parts.append(f"  - {name}: {len(agents[name])} beliefs")
+        agents_stats = "\n".join(parts)
+
+    beliefs_section = _build_beliefs_section(nodes, derived, agents)
+    derived_section = _build_derived_section(nodes, derived)
+
+    prompt = DERIVE_PROMPT.format(
+        domain_context=domain_context,
+        beliefs_section=beliefs_section,
+        derived_section=derived_section,
+        total_in=len(in_nodes),
+        total_derived=len(derived),
+        max_depth=max_depth,
+        cross_agent_task=cross_agent_task,
+        agents_stats=agents_stats,
+    )
+
+    stats = {
+        "total_in": len(in_nodes),
+        "total_derived": len(derived),
+        "max_depth": max_depth,
+        "agents": len(agents),
+        "agent_names": sorted(agents.keys()) if agents else [],
+    }
+
+    return prompt, stats
+
+
+def validate_proposals(proposals, nodes):
+    """Validate proposals against the network. Returns (valid, skipped)."""
+    valid = []
+    skipped = []
+    for p in proposals:
+        missing = [a for a in p["antecedents"] if a not in nodes]
+        missing_unless = [u for u in p["unless"] if u not in nodes]
+        if missing or missing_unless:
+            skipped.append((p, f"missing nodes: {missing + missing_unless}"))
+            continue
+        if p["id"] in nodes:
+            skipped.append((p, "already exists"))
+            continue
+        valid.append(p)
+    return valid, skipped
+
+
+def apply_proposals(valid, db_path="reasons.db"):
+    """Add valid proposals to the reasons database.
+
+    Returns list of (proposal, result_dict_or_error_string).
+    """
+    results = []
+    for p in valid:
+        try:
+            sl = ",".join(p["antecedents"])
+            unless = ",".join(p["unless"]) if p["unless"] else ""
+            result = api.add_node(
+                node_id=p["id"],
+                text=p["text"],
+                sl=sl,
+                unless=unless,
+                label=p["label"],
+                db_path=db_path,
+            )
+            results.append((p, result))
+        except Exception as e:
+            results.append((p, str(e)))
+    return results
+
+
+def write_proposals_file(valid, output_path):
+    """Write proposals to a markdown file for human review."""
+    with open(output_path, "w") as f:
+        f.write("# Proposed Derivations\n\n")
+        f.write("Review each proposal below. To accept, run:\n\n")
+        f.write("```bash\n")
+        for p in valid:
+            sl = ",".join(p["antecedents"])
+            cmd = f'reasons add {p["id"]} "{p["text"]}" --sl {sl}'
+            if p["unless"]:
+                cmd += f' --unless {",".join(p["unless"])}'
+            cmd += f' --label "{p["label"]}"'
+            f.write(f"{cmd}\n")
+        f.write("```\n\n---\n\n")
+
+        for p in valid:
+            kind_label = "DERIVE" if p["kind"] == "derive" else "GATE (outlist)"
+            f.write(f"### {kind_label}: `{p['id']}`\n\n")
+            f.write(f"{p['text']}\n\n")
+            f.write(f"- **Antecedents**: {', '.join(f'`{a}`' for a in p['antecedents'])}\n")
+            if p["unless"]:
+                f.write(f"- **Unless**: {', '.join(f'`{u}`' for u in p['unless'])}\n")
+            f.write(f"- **Label**: {p['label']}\n\n")
+
+    return output_path

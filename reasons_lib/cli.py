@@ -488,6 +488,131 @@ def cmd_lookup(args):
     print(result)
 
 
+def cmd_derive(args):
+    import asyncio
+    import os
+    import shutil
+
+    from .derive import (
+        build_prompt,
+        parse_proposals,
+        validate_proposals,
+        apply_proposals,
+        write_proposals_file,
+    )
+
+    # Load network
+    try:
+        result = api.export_network(db_path=args.db)
+    except Exception as e:
+        print(f"Error loading network: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    nodes = result.get("nodes", {})
+    if not nodes:
+        print("No nodes in the network.", file=sys.stderr)
+        sys.exit(1)
+
+    prompt, stats = build_prompt(nodes, domain=args.domain)
+
+    print(f"Network: {stats['total_in']} IN beliefs, "
+          f"{stats['total_derived']} derived, max depth {stats['max_depth']}",
+          file=sys.stderr)
+    if stats["agents"]:
+        print(f"Agents: {', '.join(stats['agent_names'])}", file=sys.stderr)
+
+    if args.dry_run:
+        print(f"\n=== Prompt ({len(prompt)} chars) ===\n")
+        print(prompt[:3000])
+        if len(prompt) > 3000:
+            print(f"\n... ({len(prompt) - 3000} more chars)")
+        return
+
+    # Model invocation via CLI
+    model = args.model or "claude"
+    model_commands = {
+        "claude": ["claude", "-p"],
+        "gemini": ["gemini", "-p", ""],
+    }
+
+    if model not in model_commands:
+        print(f"Unknown model: {model}. Available: {list(model_commands.keys())}",
+              file=sys.stderr)
+        sys.exit(1)
+
+    cmd = model_commands[model]
+    if not shutil.which(cmd[0]):
+        print(f"Error: '{cmd[0]}' CLI not found in PATH", file=sys.stderr)
+        sys.exit(1)
+
+    print(f"Deriving with {model}...", file=sys.stderr)
+
+    env = {k: v for k, v in os.environ.items() if k != "CLAUDECODE"}
+
+    async def _invoke():
+        proc = await asyncio.create_subprocess_exec(
+            *cmd,
+            stdin=asyncio.subprocess.PIPE,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+            env=env,
+        )
+        stdout, stderr = await asyncio.wait_for(
+            proc.communicate(prompt.encode()),
+            timeout=args.timeout,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"Model failed: {stderr.decode()}")
+        return stdout.decode()
+
+    try:
+        response = asyncio.run(_invoke())
+    except TimeoutError:
+        print(f"Model timed out after {args.timeout}s", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    # Parse and validate proposals
+    proposals = parse_proposals(response)
+
+    if not proposals:
+        print("No derivation proposals found in response.")
+        print("\nRaw response:\n")
+        print(response)
+        return
+
+    valid, skipped = validate_proposals(proposals, nodes)
+
+    for p, reason in skipped:
+        print(f"  SKIP {p['id']}: {reason}", file=sys.stderr)
+
+    print(f"\n{len(valid)} valid proposals "
+          f"({len(skipped)} skipped)", file=sys.stderr)
+
+    if not valid:
+        return
+
+    if args.auto:
+        results = apply_proposals(valid, db_path=args.db)
+        added = 0
+        for p, result in results:
+            if isinstance(result, dict):
+                print(f"  Added {p['id']} [{result['truth_value']}]")
+                added += 1
+            else:
+                print(f"  FAIL {p['id']}: {result}", file=sys.stderr)
+        if added:
+            print(f"\nAdded {added} derived beliefs.", file=sys.stderr)
+    else:
+        output_path = Path(args.output)
+        write_proposals_file(valid, output_path)
+        print(f"\nWrote {output_path} ({len(valid)} proposals)")
+        print("Review, then run the commands from the file to accept.")
+        print("Or re-run with --auto to add automatically.")
+
+
 def cmd_list(args):
     result = api.list_nodes(
         status=args.status,
@@ -609,6 +734,21 @@ def main():
     # repos
     sub.add_parser("repos", help="List registered repos")
 
+    # derive
+    p = sub.add_parser("derive", help="Derive deeper reasoning chains from existing beliefs")
+    p.add_argument("-o", "--output", default="proposed-derivations.md",
+                   help="Output file for proposals (default: proposed-derivations.md)")
+    p.add_argument("-m", "--model", default=None,
+                   help="Model to use: claude or gemini (default: claude)")
+    p.add_argument("--auto", action="store_true",
+                   help="Automatically add proposals (no review step)")
+    p.add_argument("--dry-run", action="store_true",
+                   help="Show prompt without invoking the model")
+    p.add_argument("--domain", default=None,
+                   help="Domain description for context (auto-detected from agents)")
+    p.add_argument("--timeout", type=int, default=300,
+                   help="Model timeout in seconds (default: 300)")
+
     # import-agent
     p = sub.add_parser("import-agent", help="Import another agent's beliefs with namespacing")
     p.add_argument("agent_name", help="Agent name (used as namespace prefix)")
@@ -680,6 +820,7 @@ def main():
         "log": cmd_log,
         "add-repo": cmd_add_repo,
         "repos": cmd_repos,
+        "derive": cmd_derive,
         "import-agent": cmd_import_agent,
         "import-beliefs": cmd_import_beliefs,
         "import-json": cmd_import_json,
