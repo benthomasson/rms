@@ -652,6 +652,47 @@ def cmd_derive(args):
             sys.exit(1)
 
 
+def cmd_accept(args):
+    from .derive import parse_proposals, validate_proposals, apply_proposals
+
+    proposals_path = Path(args.file)
+    if not proposals_path.exists():
+        print(f"File not found: {proposals_path}", file=sys.stderr)
+        sys.exit(1)
+
+    text = proposals_path.read_text()
+    proposals = parse_proposals(text)
+
+    if not proposals:
+        print("No proposals found in file.")
+        return
+
+    # Load network for validation
+    result = api.export_network(db_path=args.db)
+    nodes = result.get("nodes", {})
+
+    valid, skipped = validate_proposals(proposals, nodes)
+
+    for p, reason in skipped:
+        print(f"  SKIP {p['id']}: {reason}", file=sys.stderr)
+
+    if not valid:
+        print("No valid proposals to accept.")
+        return
+
+    results = apply_proposals(valid, db_path=args.db)
+    added = 0
+    for p, result in results:
+        if isinstance(result, dict):
+            print(f"  Added {p['id']} [{result['truth_value']}]")
+            added += 1
+        else:
+            print(f"  FAIL {p['id']}: {result}", file=sys.stderr)
+
+    print(f"\nAccepted {added} of {len(proposals)} proposals "
+          f"({len(skipped)} skipped).", file=sys.stderr)
+
+
 def cmd_list(args):
     result = api.list_nodes(
         status=args.status,
@@ -800,6 +841,11 @@ def main():
     p.add_argument("--max-rounds", type=int, default=10,
                    help="Maximum rounds for --exhaust (default: 10)")
 
+    # accept
+    p = sub.add_parser("accept", help="Accept proposals from a derive proposals file")
+    p.add_argument("file", nargs="?", default="proposed-derivations.md",
+                   help="Proposals file (default: proposed-derivations.md)")
+
     # import-agent
     p = sub.add_parser("import-agent", help="Import another agent's beliefs with namespacing")
     p.add_argument("agent_name", help="Agent name (used as namespace prefix)")
@@ -872,6 +918,7 @@ def main():
         "add-repo": cmd_add_repo,
         "repos": cmd_repos,
         "derive": cmd_derive,
+        "accept": cmd_accept,
         "import-agent": cmd_import_agent,
         "import-beliefs": cmd_import_beliefs,
         "import-json": cmd_import_json,

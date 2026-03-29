@@ -433,27 +433,24 @@ def apply_proposals(valid, db_path="reasons.db"):
 
 
 def write_proposals_file(valid, output_path):
-    """Write proposals to a markdown file for human review."""
+    """Write proposals to a markdown file for human review.
+
+    Uses the same ### DERIVE / ### GATE format that parse_proposals() can read,
+    so `reasons accept` can parse the file directly.
+    """
     with open(output_path, "w") as f:
         f.write("# Proposed Derivations\n\n")
-        f.write("Review each proposal below. To accept, run:\n\n")
-        f.write("```bash\n")
-        for p in valid:
-            sl = ",".join(p["antecedents"])
-            cmd = f'reasons add {p["id"]} "{p["text"]}" --sl {sl}'
-            if p["unless"]:
-                cmd += f' --unless {",".join(p["unless"])}'
-            cmd += f' --label "{p["label"]}"'
-            f.write(f"{cmd}\n")
-        f.write("```\n\n---\n\n")
+        f.write("Review each proposal below. Delete any you don't want, then run:\n")
+        f.write("  reasons accept proposed-derivations.md\n\n")
+        f.write("---\n\n")
 
         for p in valid:
-            kind_label = "DERIVE" if p["kind"] == "derive" else "GATE (outlist)"
-            f.write(f"### {kind_label}: `{p['id']}`\n\n")
-            f.write(f"{p['text']}\n\n")
-            f.write(f"- **Antecedents**: {', '.join(f'`{a}`' for a in p['antecedents'])}\n")
+            kind = "DERIVE" if p["kind"] == "derive" else "GATE"
+            f.write(f"### {kind} {p['id']}\n")
+            f.write(f"{p['text']}\n")
+            f.write(f"- Antecedents: {', '.join(p['antecedents'])}\n")
             if p["unless"]:
-                f.write(f"- **Unless**: {', '.join(f'`{u}`' for u in p['unless'])}\n")
-            f.write(f"- **Label**: {p['label']}\n\n")
+                f.write(f"- Unless: {', '.join(p['unless'])}\n")
+            f.write(f"- Label: {p['label']}\n\n")
 
     return output_path

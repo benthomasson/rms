@@ -8,6 +8,7 @@ from reasons_lib.derive import (
     parse_proposals,
     validate_proposals,
     apply_proposals,
+    write_proposals_file,
     _detect_agents,
     _filter_by_topic,
     _sample_beliefs,
@@ -319,3 +320,51 @@ def test_build_prompt_with_sample(agent_network):
     assert stats["sample"] is True
     # Should still produce a valid prompt
     assert "Agent:" in prompt
+
+
+# --- Accept (write + re-parse round-trip) tests ---
+
+def test_write_proposals_file_roundtrip(tmp_path):
+    """Proposals file can be parsed back by parse_proposals."""
+    proposals = [
+        {"id": "derived-1", "text": "First conclusion", "kind": "derive",
+         "antecedents": ["fact-a", "fact-b"], "unless": [], "label": "test"},
+        {"id": "gated-1", "text": "Gated conclusion", "kind": "gate",
+         "antecedents": ["fact-a"], "unless": ["fact-c"], "label": "test gate"},
+    ]
+    out = tmp_path / "proposals.md"
+    write_proposals_file(proposals, out)
+
+    text = out.read_text()
+    parsed = parse_proposals(text)
+    assert len(parsed) == 2
+    assert parsed[0]["id"] == "derived-1"
+    assert parsed[0]["antecedents"] == ["fact-a", "fact-b"]
+    assert parsed[1]["id"] == "gated-1"
+    assert parsed[1]["unless"] == ["fact-c"]
+
+
+def test_accept_applies_proposals(simple_network, tmp_path):
+    """Full accept flow: write proposals, parse, apply."""
+    proposals = [
+        {"id": "accepted-belief", "text": "Accepted from file",
+         "antecedents": ["fact-a", "fact-b"], "unless": [],
+         "kind": "derive", "label": "accepted"},
+    ]
+    out = tmp_path / "proposals.md"
+    write_proposals_file(proposals, out)
+
+    # Parse and apply (simulating what cmd_accept does)
+    text = out.read_text()
+    parsed = parse_proposals(text)
+    data = api.export_network(db_path=simple_network)
+    valid, skipped = validate_proposals(parsed, data["nodes"])
+    assert len(valid) == 1
+
+    results = apply_proposals(valid, db_path=simple_network)
+    assert len(results) == 1
+    _, result = results[0]
+    assert result["truth_value"] == "IN"
+
+    node = api.show_node("accepted-belief", db_path=simple_network)
+    assert node["truth_value"] == "IN"
