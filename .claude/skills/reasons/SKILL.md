@@ -5,11 +5,11 @@ argument-hint: "[init|add|retract|assert|challenge|defend|convert-to-premise|sum
 allowed-tools: Bash(reasons *), Bash(cd * && uv run reasons *), Bash(uvx *reasons*), Read, Grep, Glob
 ---
 
-You are managing a dependency network using the `rms` CLI tool. Unlike `beliefs` (which tracks independent facts for expert registries), `rms` tracks **justified conclusions** where beliefs depend on other beliefs and changes propagate automatically.
+You are managing a dependency network using the `reasons` CLI tool. Unlike `beliefs` (which tracks independent facts for expert registries), `reasons` tracks **justified conclusions** where beliefs depend on other beliefs and changes propagate automatically.
 
-## When to Use `rms` vs `beliefs`
+## When to Use `reasons` vs `beliefs`
 
-| Use `beliefs` when | Use `rms` when |
+| Use `beliefs` when | Use `reasons` when |
 |---|---|
 | Facts are independent (no dependency chains) | Conclusions build on premises (dependency chains) |
 | Expert/knowledge registries (RHEL, agents-python) | Research registries (physics, bethe, beliefs-pi) |
@@ -17,14 +17,14 @@ You are managing a dependency network using the `rms` CLI tool. Unlike `beliefs`
 | Maintenance = check-stale, contradictions | Maintenance = retraction cascades, backtracking |
 | Density 0.00 (flat) | Density 0.74+ (dense) |
 
-**Rule of thumb:** If beliefs depend on other beliefs, use `rms`. If beliefs depend only on external sources, use `beliefs`.
+**Rule of thumb:** If beliefs depend on other beliefs, use `reasons`. If beliefs depend only on external sources, use `beliefs`.
 
 ## How to Run
 
 Try these in order until one works:
-1. `reasons $ARGUMENTS` (if installed via `uv tool install -e ~/git/rms`)
-2. `cd ~/git/rms && uv run reasons $ARGUMENTS` (from repo directory)
-3. `uvx --from git+https://github.com/benthomasson/rms rms $ARGUMENTS` (fallback)
+1. `reasons $ARGUMENTS` (if installed via `uv tool install -e ~/git/ftl-reasons`)
+2. `cd ~/git/ftl-reasons && uv run reasons $ARGUMENTS` (from repo directory)
+3. `uvx --from ftl-reasons reasons $ARGUMENTS` (fallback)
 
 ## Key Concepts
 
@@ -124,7 +124,7 @@ This converts a beliefs CLI registry into Reasons nodes:
 - STALE/OUT claims → retracted nodes (preserved for restoration)
 - `nogoods.md` auto-detected next to `beliefs.md`, or specify with `--nogoods path/to/nogoods.md`
 
-**Use this to migrate research registries from `beliefs` to `rms`.** After import, retraction cascades work on the imported dependency graph.
+**Use this to migrate research registries from `beliefs` to `reasons`.** After import, retraction cascades work on the imported dependency graph.
 
 **Caveat:** `import-beliefs` treats all `Depends on:` as SL justifications (all antecedents must be IN). If a dependency was contextual ("derived while investigating X") rather than logical ("true only if X is true"), the node may be incorrectly OUT. Use `reasons convert-to-premise` to fix these after import.
 
@@ -151,7 +151,7 @@ Filters combine: `reasons list --status IN --premises` shows IN premises only.
 Run `reasons export`. Outputs the entire network as JSON.
 
 ### `export-markdown`
-Run `reasons export-markdown`. Generates a `beliefs.md`-compatible markdown file from the DB. Use `-o beliefs.md` to write to file. The output is generated — operate through `rms`, not by editing the markdown.
+Run `reasons export-markdown`. Generates a `beliefs.md`-compatible markdown file from the DB. Use `-o beliefs.md` to write to file. The output is generated — operate through `reasons`, not by editing the markdown.
 
 ### `check-stale`
 Run `reasons check-stale`. Compares stored source hashes against current file content (SHA-256). Flags any IN node whose source file has changed. Exits 1 if any stale nodes found.
